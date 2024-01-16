@@ -1,0 +1,8 @@
+# ignore all by default
+*
+
+# unignore what should be tracked
+!.gitignore
+!.gitattributes
+!inventory.py
+!tabletemplate.db
