@@ -1,17 +1,19 @@
 import streamlit as st
+import os
 import sqlite3
 import pandas as pd
 import datetime
-import base64
-from PIL import Image
-import io
-import streamlit_webrtc as webrtc
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
-from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+from io import BytesIO
+import pandas as pd
+import datetime
 
+absolute_path = os.path.dirname(__file__)
+
+today = datetime.date
 
 df_current = pd.DataFrame()
 df_history = pd.DataFrame()
+
 
 st.set_page_config(page_title= "HC Hardware",
                    page_icon= "🔢",
@@ -28,6 +30,29 @@ Not yet implemented:
                        })
 
 
+# Function to convert SQLite database to Excel and initiate download
+def download_excel():
+    # Connect to the SQLite database
+    conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
+
+    # Read data from the database into a DataFrame
+    df_current = pd.read_sql_query("SELECT * FROM CURRENT;", conn)
+
+    # Exclude the 'IMAGE' column
+    df_current = df_current.drop(columns=['IMAGE'])
+    
+    # Convert DataFrame to Excel
+    excel_data = BytesIO()
+    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
+        df_current.to_excel(writer, sheet_name='POS HARDWARE', index=False)
+
+    # Save the Excel data to a BytesIO buffer
+    excel_data.seek(0)
+
+    # Close the connection
+    conn.close()
+    return excel_data
+
 def fetch_data(cursor, table_name):
     query = f"SELECT * FROM {table_name};"
     result = cursor.execute(query).fetchall()
@@ -37,7 +62,7 @@ def fetch_data(cursor, table_name):
 #@st.cache_data
 def load_data(table):
     # Connect to SQLite database
-    conn = sqlite3.connect("C:\\Users\\agibson\\Documents\\GitHub\\inventory_management\\POSHardware.db")
+    conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
     cursor = conn.cursor()
 
     data = fetch_data(cursor, table)
@@ -75,7 +100,7 @@ if add_device_submit:
     # Validate and process the form data (you can add your logic here)
     if new_sn and new_pos and new_location and new_type and new_connected:
         # Connect to the database and add the new device
-        conn = sqlite3.connect("C:\\Users\\agibson\\Documents\\GitHub\\inventory_management\\POSHardware.db")
+        conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
         cursor = conn.cursor()
 
         try:
@@ -122,21 +147,47 @@ st.title("HC Hardware")
 if st.button("Refresh data"):
     df_current = load_data("CURRENT")
     df_history = load_data("HISTORY")
+    
+# Download the Excel file
+st.download_button(
+    label="Download Excel",
+    data=download_excel(),
+    file_name=f"inventory_data.xlsx",
+    key="download_excel_button"
+)
 
-#st.write(st.session_state)
 
-locations, devices, history = st.columns(3)
+overview, devices, history = st.columns(3)
 
-locations, devices, history = st.tabs(["Locations", "Devices", "History"])
+overview, devices, history = st.tabs(["Overview", "Devices", "History"])
 
-with locations:
+with overview:
     st.subheader('Breakdown by location')
+    
+    # Assuming 'CHANGE TIME' is the timestamp column in your DataFrame
+    df_history['CHANGE TIME'] = pd.to_datetime(df_history['CHANGE TIME'])
+
+    # Calculate the timestamp for 24 hours ago
+    twenty_four_hours_ago = datetime.datetime.now() - datetime.timedelta(hours=24)
+
+    # Count the number of changes in the last 24 hours
+    changes_last_24_hours = df_history[df_history['CHANGE TIME'] >= twenty_four_hours_ago].shape[0]
+
+    # Display the counter
+    st.write(f"Changes in the last 24 hours: {changes_last_24_hours}")
+    
+    # Count the number of devices without a photo
+    devices_without_photo = df_current['IMAGE'].isnull().sum()
+
+    # Display the counter
+    st.write(f"Devices without a photo: {devices_without_photo}")
+    
     
     # Group data by "LOCATION" and count unique values in "CONNECTED" column
     grouped_data = df_current.groupby("LOCATION")["CONNECTED"].nunique().reset_index()
     
     # Display the data in a table
-    st.dataframe(grouped_data, hide_index=True)
+    st.dataframe(grouped_data, hide_index=True, use_container_width=True,)
 
     
 with devices:
@@ -158,7 +209,7 @@ with devices:
             filtered_devices = filtered_devices[filtered_devices.apply(lambda row: any(row.astype(str).str.contains(search_device, case=False)), axis=1)]
 
     # Display filtered devices in a DataFrame
-    st.dataframe(filtered_devices, use_container_width=True, hide_index=True)
+    st.dataframe(filtered_devices, use_container_width=True, hide_index=True, column_order=("POS", "TYPE", "LOCATION","FRIENDLY NAME","CONNECTED", "NOTES", "S/N","LAST EDIT"))
     
         
     st.subheader('Edit Device')
@@ -199,7 +250,7 @@ with devices:
 
         if st.button("Save Changes"):
             # Connect to the database
-            conn = sqlite3.connect("C:\\Users\\agibson\\Documents\\GitHub\\inventory_management\\POSHardware.db")
+            conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
             cursor = conn.cursor()
 
             try:
@@ -244,7 +295,7 @@ with history:
     history_data_query = "SELECT * FROM HISTORY;"
 
     # Connect to the database
-    conn = sqlite3.connect("C:\\Users\\agibson\\Documents\\GitHub\\inventory_management\\POSHardware.db")
+    conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
     cursor = conn.cursor()
 
     # Execute the history data query
@@ -259,10 +310,10 @@ with history:
     # Filter history data based on search input across all columns
     if search_history:
         filtered_history = df_history[df_history.apply(lambda row: any(row.astype(str).str.contains(search_history, case=False)), axis=1)]
-        st.dataframe(filtered_history, use_container_width=True)
+        st.dataframe(filtered_history, use_container_width=True, hide_index=True)
     else:
         # Display all history data
-        st.dataframe(df_history, use_container_width=True)
+        st.dataframe(df_history, use_container_width=True, hide_index=True, column_order=("CHANGE TIME","DEVICE S/N","PREVIOUS LOCATION","PREVIOUS FRIENDLY NAME", "PREVIOUS CONNECTION","PREVIOUS NOTES","NEW LOCATION","NEW FRIENDLY NAME","NEW CONNECTION","NEW NOTES"))
 
     # Close the connection
     conn.close()
