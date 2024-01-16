@@ -33,7 +33,7 @@ Not yet implemented:
 # Function to convert SQLite database to Excel and initiate download
 def download_excel():
     # Connect to the SQLite database
-    conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
+    conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
 
     # Read data from the database into a DataFrame
     df_current = pd.read_sql_query("SELECT * FROM CURRENT;", conn)
@@ -58,11 +58,9 @@ def fetch_data(cursor, table_name):
     result = cursor.execute(query).fetchall()
     return result
 
-
-#@st.cache_data
 def load_data(table):
     # Connect to SQLite database
-    conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
+    conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
     cursor = conn.cursor()
 
     data = fetch_data(cursor, table)
@@ -100,7 +98,7 @@ if add_device_submit:
     # Validate and process the form data (you can add your logic here)
     if new_sn and new_pos and new_location and new_type and new_connected:
         # Connect to the database and add the new device
-        conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
+        conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
         cursor = conn.cursor()
 
         try:
@@ -250,7 +248,7 @@ with devices:
 
         if st.button("Save Changes"):
             # Connect to the database
-            conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
+            conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
             cursor = conn.cursor()
 
             try:
@@ -295,7 +293,7 @@ with history:
     history_data_query = "SELECT * FROM HISTORY;"
 
     # Connect to the database
-    conn = sqlite3.connect(os.path.join(absolute_path,'../inventory_management\\POSHardware.db'))
+    conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
     cursor = conn.cursor()
 
     # Execute the history data query
