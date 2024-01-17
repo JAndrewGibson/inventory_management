@@ -3,9 +3,11 @@ import os
 import sqlite3
 import pandas as pd
 import datetime
+import io
 from io import BytesIO
 import pandas as pd
 import datetime
+from PIL import Image
 
 absolute_path = os.path.dirname(__file__)
 
@@ -76,15 +78,20 @@ df_history = load_data("HISTORY")
 # Sidebar menu
 st.sidebar.title("Add a device")
 
+existing_locations = list(df_current['LOCATION'].unique())
+existing_types = list(df_current['TYPE'].unique())
+existing_devices = [name for name in df_current['FRIENDLY NAME'].unique() if name is not None and name.strip() != ""]
+
 # Form to add a new device
 with st.sidebar.form("Add New Device"):
     # Add form fields
-    new_sn = st.text_input("S/N (Serial Number)", "", key="new_sn")  # Required field
-    new_pos = st.text_input("POS", "")
-    new_location = st.text_input("Location", "")
-    new_type = st.text_input("Type", "")  # Add Type field
+    pos_options = ["SpotOn", "Tapin2", "Toast", "Mashgin"]
+    new_pos = st.selectbox("POS", [""] + pos_options)
+    new_sn = st.text_input("S/N (Serial Number)", "", key="new_sn")
+    new_location = st.selectbox("Location", [""] + existing_locations)
+    new_type = st.selectbox("Type", [""] + existing_types)
     new_friendly_name = st.text_input("Friendly Name", "")
-    new_connected = st.text_input("Connected", "")
+    new_connected = st.selectbox("Connected",[""] + existing_devices)
     new_notes = st.text_input("Notes", "")
 
     # File upload for new device image
@@ -92,6 +99,8 @@ with st.sidebar.form("Add New Device"):
 
     # Submit button
     add_device_submit = st.form_submit_button("Add Device")
+
+
 
 # Process the form submission
 if add_device_submit:
@@ -208,19 +217,28 @@ with devices:
 
     # Display filtered devices in a DataFrame
     st.dataframe(filtered_devices, use_container_width=True, hide_index=True, column_order=("POS", "TYPE", "LOCATION","FRIENDLY NAME","CONNECTED", "NOTES", "S/N","LAST EDIT"))
-    
-        
+      
     st.subheader('Edit Device')
     # Dropdown to select a device from the filtered list
-    available_devices = filtered_devices['S/N'].tolist()
-    selected_device_serial = st.selectbox("Select a device to edit", available_devices)
+    available_devices = filtered_devices.apply(
+    lambda row: row['FRIENDLY NAME'] if not pd.isnull(row['FRIENDLY NAME']) else f"{row['TYPE']} connected to {row['CONNECTED']}",
+    axis=1
+).tolist()
+    # Create a mapping between display names and serial numbers
+    display_name_to_serial = {display_name: serial for display_name, serial in zip(available_devices, filtered_devices['S/N'].tolist())}
+
+    # Dropdown to select a device from the filtered list
+    selected_device_display = st.selectbox("Select a device to edit", available_devices)
+
+    # Get the corresponding serial number based on the displayed name
+    selected_device_serial = display_name_to_serial.get(selected_device_display, None)
 
     # Display editable fields
     if not filtered_devices.empty:
         selected_device_index = filtered_devices[filtered_devices['S/N'] == selected_device_serial].index[0]
 
-        # Create two columns
-        col1, col2 = st.columns(2)
+        # Create three columns
+        col1, col2, col3 = st.columns(3)
 
         # Add editable fields to the left column
         pos_options = filtered_devices['POS'].unique()
@@ -244,7 +262,11 @@ with devices:
 
         # Check if an image is uploaded
         if image_upload:
-            st.image(image_upload, caption="Uploaded Image", use_column_width=True)
+            uploaded_image = Image.open(io.BytesIO(image_upload.read()))
+            target_size = (400, 400)
+            resized_image = uploaded_image.resize(target_size)
+            rotated_image = resized_image.rotate(270, expand=True)
+            st.image(rotated_image, caption="Uploaded Image", use_column_width=True)
 
         if st.button("Save Changes"):
             # Connect to the database
