@@ -6,16 +6,15 @@ import datetime
 import io
 from io import BytesIO
 import pandas as pd
-import datetime
 from PIL import Image
 
 absolute_path = os.path.dirname(__file__)
 
-today = datetime.date
-
-df_current = pd.DataFrame()
+date = datetime.datetime.now()
+today = date.strftime("%Y-%m-%d")
+df_devices = pd.DataFrame()
+df_components = pd.DataFrame()
 df_history = pd.DataFrame()
-
 
 st.set_page_config(page_title= "HC Hardware",
                    page_icon= "🔢",
@@ -24,13 +23,12 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''# F&B REPORTING   
+                       "About":'''# F&B Hardware   
 ## Version 0.3
 This is a custom solution made by Andrew Gibson for the visualization and configuration of all hardware inventory within the F&B department of the Honda Center.  
 Not yet implemented:
 - A list of all things not yet implemented'''
                        })
-
 
 # Function to convert SQLite database to Excel and initiate download
 def download_excel():
@@ -38,15 +36,15 @@ def download_excel():
     conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
 
     # Read data from the database into a DataFrame
-    df_current = pd.read_sql_query("SELECT * FROM CURRENT;", conn)
+    df_devices = pd.read_sql_query("SELECT * FROM DEVICES;", conn)
 
     # Exclude the 'IMAGE' column
-    df_current = df_current.drop(columns=['IMAGE'])
+    df_devices = df_devices.drop(columns=['IMAGE'])
     
     # Convert DataFrame to Excel
     excel_data = BytesIO()
     with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
-        df_current.to_excel(writer, sheet_name='POS HARDWARE', index=False)
+        df_devices.to_excel(writer, sheet_name='POS HARDWARE', index=False)
 
     # Save the Excel data to a BytesIO buffer
     excel_data.seek(0)
@@ -60,6 +58,7 @@ def fetch_data(cursor, table_name):
     result = cursor.execute(query).fetchall()
     return result
 
+
 def load_data(table):
     # Connect to SQLite database
     conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
@@ -71,16 +70,17 @@ def load_data(table):
     # Return both the DataFrame and the cursor
     return df
 
-# Load data
-df_current = load_data("CURRENT")
+
+
+df_devices = load_data("DEVICES")
 df_history = load_data("HISTORY")
 
 # Sidebar menu
 st.sidebar.title("Add a device")
 
-existing_locations = list(df_current['LOCATION'].unique())
-existing_types = list(df_current['TYPE'].unique())
-existing_devices = [name for name in df_current['FRIENDLY NAME'].unique() if name is not None and name.strip() != ""]
+existing_locations = list(df_devices['LOCATION'].unique())
+existing_types = list(df_devices['TYPE'].unique())
+existing_devices = [name for name in df_devices['FRIENDLY NAME'].unique() if name is not None and name.strip() != ""]
 
 # Form to add a new device
 with st.sidebar.form("Add New Device"):
@@ -111,8 +111,8 @@ if add_device_submit:
         cursor = conn.cursor()
 
         try:
-            # Insert the new device into the CURRENT table
-            insert_query = "INSERT INTO CURRENT (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, CONNECTED, NOTES, IMAGE, `LAST EDIT`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);"
+            # Insert the new device into the DEVICES table
+            insert_query = "INSERT INTO DEVICES (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, CONNECTED, NOTES, IMAGE, `LAST EDIT`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);"
             
             # Convert the new image to bytes
             new_image_bytes = None
@@ -134,7 +134,8 @@ if add_device_submit:
             st.sidebar.success("New device added successfully!")
 
             # Refresh the data in the app
-            df_current = load_data("CURRENT")
+            df_devices = load_data("DEVICES")
+            df_components = load_data("COMPONENTS")
             df_history = load_data("HISTORY")
 
         except sqlite3.Error as e:
@@ -152,21 +153,22 @@ if add_device_submit:
 st.title("HC Hardware")
 
 if st.button("Refresh data"):
-    df_current = load_data("CURRENT")
+    df_devices = load_data("DEVICES")
+    df_components = load_data("COMPONENTS")
     df_history = load_data("HISTORY")
     
 # Download the Excel file
 st.download_button(
-    label="Download Excel",
+    label="Download as Excel",
     data=download_excel(),
-    file_name=f"inventory_data.xlsx",
+    file_name=f"{today} POS Hardware Inventory.xlsx",
     key="download_excel_button"
 )
 
 
-overview, devices, history = st.columns(3)
+overview, devices, components, history = st.columns(4)
 
-overview, devices, history = st.tabs(["Overview", "Devices", "History"])
+overview, devices, components, history = st.tabs(["Overview", "Devices", "Components", "History"])
 
 with overview:
     st.subheader('Breakdown by location')
@@ -184,34 +186,35 @@ with overview:
     st.write(f"Changes in the last 24 hours: {changes_last_24_hours}")
     
     # Count the number of devices without a photo
-    devices_without_photo = df_current['IMAGE'].isnull().sum()
+    devices_without_photo = df_devices['IMAGE'].isnull().sum()
 
     # Display the counter
     st.write(f"Devices without a photo: {devices_without_photo}")
     
     
     # Group data by "LOCATION" and count unique values in "CONNECTED" column
-    grouped_data = df_current.groupby("LOCATION")["CONNECTED"].nunique().reset_index()
+    grouped_data = df_devices.groupby("LOCATION")["CONNECTED"].nunique().reset_index()
     
     # Display the data in a table
     st.dataframe(grouped_data, hide_index=True, use_container_width=True,)
 
-    
 with devices:
     st.subheader('Devices')
     
-    locations_list = ['All'] + list(df_current['LOCATION'].unique())
+    locations_list = ['All'] + list(df_devices['LOCATION'].unique())
     selected_location = st.selectbox("Select a location", locations_list)
+    type_list = ['All'] + list(df_devices['TYPE'].unique())
+    selected_list = st.selectbox("Select a type", type_list)
     # Search bar for device lookup
     search_device = st.text_input("Search for a device", "")
 
     # Filter devices based on search input and selected location
     if selected_location == 'All':
-        filtered_devices = df_current
+        filtered_devices = df_devices
         if search_device:
             filtered_devices = filtered_devices[filtered_devices.apply(lambda row: any(row.astype(str).str.contains(search_device, case=False)), axis=1)]
     else:
-        filtered_devices = df_current[df_current['LOCATION'] == selected_location]
+        filtered_devices = df_devices[df_devices['LOCATION'] == selected_location]
         if search_device:
             filtered_devices = filtered_devices[filtered_devices.apply(lambda row: any(row.astype(str).str.contains(search_device, case=False)), axis=1)]
 
@@ -221,7 +224,7 @@ with devices:
     st.subheader('Edit Device')
     # Dropdown to select a device from the filtered list
     available_devices = filtered_devices.apply(
-    lambda row: row['FRIENDLY NAME'] if not pd.isnull(row['FRIENDLY NAME']) else f"{row['TYPE']} connected to {row['CONNECTED']}",
+    lambda row: f"{row['FRIENDLY NAME']} at {row['LOCATION']}" if not pd.isnull(row['FRIENDLY NAME']) else f"{row['TYPE']} connected to {row['CONNECTED']} at {row['LOCATION']}",
     axis=1
 ).tolist()
     # Create a mapping between display names and serial numbers
@@ -249,7 +252,6 @@ with devices:
         connected_options = filtered_devices['CONNECTED'].unique()
         connected = col1.selectbox("Main Device Name", connected_options, index=connected_options.tolist().index(filtered_devices.at[selected_device_index, 'CONNECTED']))
         notes = col1.text_input("Notes", filtered_devices.at[selected_device_index, 'NOTES'])
-
         # Display existing image if available
         if 'IMAGE' in filtered_devices.columns:
             existing_image = filtered_devices.at[selected_device_index, 'IMAGE']
@@ -275,16 +277,25 @@ with devices:
 
             try:
                 # Fetch the current values before the update
-                fetch_old_values_query = "SELECT POS, LOCATION, `FRIENDLY NAME`, CONNECTED, NOTES, IMAGE FROM CURRENT WHERE `S/N` = ?;"
+                fetch_old_values_query = "SELECT POS, LOCATION, `FRIENDLY NAME`, CONNECTED, NOTES, IMAGE FROM DEVICES WHERE `S/N` = ?;"
                 old_values = cursor.execute(fetch_old_values_query, (selected_device_serial,)).fetchone()
                 
                 # Convert the image to bytes if it's uploaded
                 image_bytes = image_upload.read() if image_upload else old_values[5]
 
                 # Update the data in the SQL database
-                update_query = f"UPDATE CURRENT SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, CONNECTED = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
+                update_query = f"UPDATE DEVICES SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, CONNECTED = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
                 timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                if notes == "None":
+                    notes = None
+                if friendly_name == "None":
+                    friendly_name = None
+                update_query = f"UPDATE DEVICES SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, CONNECTED = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
                 cursor.execute(update_query, (pos, location, friendly_name, connected, notes, image_bytes, timestamp, selected_device_serial))
+                    
+                    
+                    
+                    
 
                 # Insert the old values into the HISTORY table
                 insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
@@ -295,7 +306,8 @@ with devices:
                 st.success("Changes saved successfully!")
 
                 # Refresh the data in the app
-                df_current = load_data("CURRENT")
+                df_devices = load_data("DEVICES")
+                df_components = load_data("COMPONENTS")
                 df_history = load_data("HISTORY")
 
             except sqlite3.Error as e:
@@ -304,6 +316,12 @@ with devices:
             finally:
                 # Close the connection
                 conn.close()
+    else:
+        st.write("Oops, no devices...")
+            
+
+with components:
+    st.subheader("Components")
 
 with history:
     st.subheader('History Data')
