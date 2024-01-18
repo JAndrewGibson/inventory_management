@@ -6,3 +6,5 @@
 !.gitattributes
 !inventory.py
 !tabletemplate.db
+*.db
+tabletemplate.db
