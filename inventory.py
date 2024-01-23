@@ -19,11 +19,20 @@ df_history = pd.DataFrame()
 st.set_page_config(page_title= "HC Hardware",
                    page_icon= "💻",
                    initial_sidebar_state="auto",
-                   layout="wide",)
+                   layout="wide",
+                   menu_items={
+                       'Get Help':None,
+                       'Report a Bug':None,
+                       "About":'''# F&B HARDWARE INVENTORY   
+### Version 0.9 
+# Roadmap:
+- Ability to use a checkbox to affect changes on the component when changing device.
+- Change the logic for editing components and devices.
+- Create new template for Github'''
+                       })
 
 hide_streamlit_style = """
             <style>
-            #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             </style>
             """
@@ -319,7 +328,7 @@ with devices:
             rotated_image = resized_image.rotate(270, expand=True)
             st.image(rotated_image, caption="Uploaded Image", use_column_width=True)
 
-        if col2.button("Save Changes"):
+        if col2.button("Save Device"):
             # Connect to the database
             conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
             cursor = conn.cursor()
@@ -432,7 +441,7 @@ with components:
             rotated_image = resized_image.rotate(270, expand=True)
             st.image(rotated_image, caption="Uploaded Image", use_column_width=True)
 
-        if col2.button("Save Changee"):
+        if col2.button("Save Component"):
             # Connect to the database
             conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
             cursor = conn.cursor()
