@@ -281,112 +281,131 @@ with devices:
     col1.subheader('Devices')
    
     locations_list = ['All'] + list(df_devices['LOCATION'].unique())
-    selected_location = col1.selectbox("Select a location", locations_list)
+    selected_locations = col1.multiselect("Select a location", locations_list, default=["All"])
     type_list = ['All'] + list(df_devices['TYPE'].unique())
-    selected_list = col1.selectbox("Select a type", type_list)
+    selected_types = col1.multiselect("Select a type", type_list, default=["All"])
     # Search bar for device lookup
     search_device = col1.text_input("Search for a device", "")
 
     # Filter devices based on search input and selected location
-    if selected_location == 'All':
-        filtered_devices = df_devices
-        if search_device:
-            filtered_devices = filtered_devices[filtered_devices.apply(lambda row: any(row.astype(str).str.contains(search_device, case=False)), axis=1)]
-    else:
-        filtered_devices = df_devices[df_devices['LOCATION'] == selected_location]
-        if search_device:
-            filtered_devices = filtered_devices[filtered_devices.apply(lambda row: any(row.astype(str).str.contains(search_device, case=False)), axis=1)]
+    filtered_devices = df_devices.copy()
+    if "All" not in selected_locations:
+        filtered_devices = filtered_devices[filtered_devices['LOCATION'].isin(selected_locations)]
+    if "All" not in selected_types:
+        filtered_devices = filtered_devices[filtered_devices['TYPE'].isin(selected_types)]
+    if search_device:
+        filtered_devices = filtered_devices[filtered_devices.apply(lambda row: any(row.astype(str).str.contains(search_device, case=False)), axis=1)]
 
     # Display filtered devices in a DataFrame
-    col1.dataframe(filtered_devices, use_container_width=True, hide_index=True, column_order=("POS", "TYPE", "LOCATION","FRIENDLY NAME", "NOTES", "S/N","LAST EDIT"))
-      
-    col2.subheader('Edit Device')
-    # Dropdown to select a device from the filtered list
-    available_devices = filtered_devices.apply(
-    lambda row: f"{row['FRIENDLY NAME']} at {row['LOCATION']}",
-    axis=1
-).tolist()
-    # Create a mapping between display names and serial numbers
-    display_name_to_serial = {display_name: serial for display_name, serial in zip(available_devices, filtered_devices['S/N'].tolist())}
-
-    # Dropdown to select a device from the filtered list
-    selected_device_display = col2.selectbox("Select a device to edit", available_devices)
-
-    # Get the corresponding serial number based on the displayed name
-    selected_device_serial = display_name_to_serial.get(selected_device_display, None)
-
-    # Display editable fields
     if not filtered_devices.empty:
-        selected_device_index = filtered_devices[filtered_devices['S/N'] == selected_device_serial].index[0]
+        col1.dataframe(filtered_devices, use_container_width=True, hide_index=True, column_order=("POS", "TYPE", "LOCATION","FRIENDLY NAME", "NOTES", "S/N","LAST EDIT"))
+    
+      
+        col2.subheader('Edit Device')
+        # Dropdown to select a device from the filtered list
+        available_devices = filtered_devices.apply(
+        lambda row: f"{row['FRIENDLY NAME']} at {row['LOCATION']}",axis=1).tolist()
+        # Create a mapping between display names and serial numbers
+        display_name_to_serial = {display_name: serial for display_name, serial in zip(available_devices, filtered_devices['S/N'].tolist())}
 
-        # Add editable fields to the left column
-        pos_options = filtered_devices['POS'].unique()
-        pos = col2.selectbox("Device POS", pos_options, index=pos_options.tolist().index(filtered_devices.at[selected_device_index, 'POS']))
-        location_options = filtered_devices['LOCATION'].unique()
-        location = col2.selectbox("Device Location", location_options, index=location_options.tolist().index(filtered_devices.at[selected_device_index, 'LOCATION']))
-        friendly_name = col2.text_input("Friendly Name", filtered_devices.at[selected_device_index, 'FRIENDLY NAME'])
-        notes = col2.text_input("Device Notes", filtered_devices.at[selected_device_index, 'NOTES'])
-        # Display existing image if available
-        if 'IMAGE' in filtered_devices.columns:
-            existing_image = filtered_devices.at[selected_device_index, 'IMAGE']
-            if existing_image:
-                col2.image(existing_image, use_column_width=True)
-                
-        # File upload for image in the right column
-        image_upload = None
-        image_upload = col2.file_uploader("Upload a new photo?", type=["jpg", "jpeg", "png"])
+        # Dropdown to select a device from the filtered list
+        selected_device_display = col2.selectbox("Select a device to edit", available_devices)
 
-        # Check if an image is uploaded
-        if image_upload:
-            uploaded_image = Image.open(io.BytesIO(image_upload.read()))
-            target_size = (400, 400)
-            resized_image = uploaded_image.resize(target_size)
-            rotated_image = resized_image.rotate(270, expand=True)
-            st.image(rotated_image, caption="Uploaded Image", use_column_width=True)
+        # Get the corresponding serial number based on the displayed name
+        selected_device_serial = display_name_to_serial.get(selected_device_display, None)
 
-        if col2.button("Save Device"):
-            # Connect to the database
-            conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
-            cursor = conn.cursor()
+        connected_components = df_components[df_components['CONNECTED'] == selected_device_serial]['TYPE'].unique()
+        connected_components_text = "   ".join(f'<span style="color:green">•</span> {component}' for component in connected_components)
+        col2.markdown(connected_components_text, unsafe_allow_html=True)
+        
+        # Display editable fields
+        if not filtered_devices.empty:
+            selected_device_index = filtered_devices[filtered_devices['S/N'] == selected_device_serial].index[0]
 
-            try:
-                # Fetch the current values before the update
-                fetch_old_values_query = "SELECT POS, LOCATION, `FRIENDLY NAME`, NOTES, IMAGE FROM DEVICES WHERE `S/N` = ?;"
-                old_values = cursor.execute(fetch_old_values_query, (selected_device_serial,)).fetchone()
-                
-                # Convert the image to bytes if it's uploaded
-                image_bytes = image_upload.read() if image_upload else old_values[5]
+            # Add editable fields to the left column
+            pos_options = filtered_devices['POS'].unique()
+            pos = col2.selectbox("Device POS", pos_options, index=pos_options.tolist().index(filtered_devices.at[selected_device_index, 'POS']))
+            location_options = filtered_devices['LOCATION'].unique()
+            location = col2.selectbox("Device Location", location_options, index=location_options.tolist().index(filtered_devices.at[selected_device_index, 'LOCATION']))
+            friendly_name = col2.text_input("Friendly Name", filtered_devices.at[selected_device_index, 'FRIENDLY NAME'])
+            notes = col2.text_input("Device Notes", filtered_devices.at[selected_device_index, 'NOTES'])
+            # Display existing image if available
+            if 'IMAGE' in filtered_devices.columns:
+                existing_image = filtered_devices.at[selected_device_index, 'IMAGE']
+                if existing_image:
+                    col2.image(existing_image, use_column_width=True)
+                        
+            # File upload for image in the right column
+            image_upload = None
+            image_upload = col2.file_uploader("Upload a new photo?", type=["jpg", "jpeg", "png"])
 
-                # Update the data in the SQL database
-                update_query = f"UPDATE DEVICES SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
-                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                if notes == "None":
-                    notes = None
-                if friendly_name == "None":
-                    friendly_name = None
-                update_query = f"UPDATE DEVICES SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
-                cursor.execute(update_query, (pos, location, friendly_name, notes, image_bytes, timestamp, selected_device_serial))
+            # Check if an image is uploaded
+            if image_upload:
+                uploaded_image = Image.open(io.BytesIO(image_upload.read()))
+                target_size = (400, 400)
+                resized_image = uploaded_image.resize(target_size)
+                rotated_image = resized_image.rotate(270, expand=True)
+                st.image(rotated_image, caption="Uploaded Image", use_column_width=True)
 
-                # Insert the old values into the HISTORY table
-                insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-                cursor.execute(insert_history_query, (timestamp, selected_device_serial, old_values[1], old_values[2], old_values[3], old_values[4], old_values[5], location, friendly_name, notes, image_bytes))
+            if col2.button("Save Device"):
+                # Connect to the database
+                conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
+                cursor = conn.cursor()
 
-                # Commit the changes
-                conn.commit()
-                st.success("Changes saved successfully!")
+                try:
+                    # Fetch the current values before the update
+                    fetch_old_values_query = "SELECT POS, LOCATION, `FRIENDLY NAME`, NOTES, IMAGE FROM DEVICES WHERE `S/N` = ?;"
+                    old_values = cursor.execute(fetch_old_values_query, (selected_device_serial,)).fetchone()
+                    
+                    if notes == "None":
+                        notes = None
+                    if friendly_name == "None":
+                        friendly_name = None
+                    
+                    if old_values is None:
+                        old_pos = None
+                        old_location = None
+                        old_friendly_name = None
+                        old_notes = None
+                        old_image_bytes = None
+                    
+                    if old_values:
+                        # Convert the image to bytes if it's uploaded
+                        image_bytes = image_upload.read() if image_upload else old_values[5]
 
-                # Refresh the data in the app
-                df_devices = load_data("DEVICES")
-                df_components = load_data("COMPONENTS")
-                df_history = load_data("HISTORY")
+                        # Update the data in the SQL database
+                        update_query = f"UPDATE DEVICES SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
+                        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        # Check if each attribute in old_values is not null and assign to variables
+                        old_pos = old_values[0] if old_values[0] is not None else None
+                        old_location = old_values[1] if old_values[1] is not None else None
+                        old_friendly_name = old_values[2] if old_values[2] is not None else None
+                        old_notes = old_values[3] if old_values[3] is not None else None
+                        old_image_bytes = old_values[4] if old_values[4] is not None else None
+                        cursor.execute(update_query, (pos, location, friendly_name, notes, image_bytes, timestamp, selected_device_serial))
 
-            except sqlite3.Error as e:
-                st.error(f"Error updating data: {e}")
+                        # Insert the old values into the HISTORY table
+                        insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+                        cursor.execute(insert_history_query, (timestamp, selected_device_serial, old_values[1], old_values[2], old_values[3], old_values[4], old_values[5], location, friendly_name, notes, image_bytes))
 
-            finally:
-                conn.close()
+                        # Commit the changes
+                        conn.commit()
+                        st.success("Changes saved successfully!")
+
+                        # Refresh the data in the app
+                        df_devices = load_data("DEVICES")
+                        df_components = load_data("COMPONENTS")
+                        df_history = load_data("HISTORY")
+                    else:
+                        st.error("")
+
+                except sqlite3.Error as e:
+                    st.error(f"Error updating data: {e}")
+
+                finally:
+                    conn.close()
     else:
-        st.write("Oops, no devices...")
+        col1.write("Oops, no devices... Check your search terms or contact Andrew!")
             
 with components:
     col1, col2 = st.columns(2)
