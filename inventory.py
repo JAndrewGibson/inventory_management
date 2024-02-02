@@ -315,7 +315,7 @@ with devices:
         selected_device_serial = display_name_to_serial.get(selected_device_display, None)
 
         connected_components = df_components[df_components['CONNECTED'] == selected_device_serial]['TYPE'].unique()
-        connected_components_text = "   ".join(f'<span style="color:green">•</span> {component}' for component in connected_components)
+        connected_components_text = " ".join(f'<span style="color:green">•</span> {component}' for component in connected_components)
         col2.markdown(connected_components_text, unsafe_allow_html=True)
         
         # Display editable fields
@@ -333,7 +333,7 @@ with devices:
             if 'IMAGE' in filtered_devices.columns:
                 existing_image = filtered_devices.at[selected_device_index, 'IMAGE']
                 if existing_image:
-                    col2.image(existing_image, use_column_width=True)
+                    col2.image(existing_image, width=200)
                         
             # File upload for image in the right column
             image_upload = None
@@ -345,7 +345,7 @@ with devices:
                 target_size = (400, 400)
                 resized_image = uploaded_image.resize(target_size)
                 rotated_image = resized_image.rotate(270, expand=True)
-                st.image(rotated_image, caption="Uploaded Image", use_column_width=True)
+                col2.image(rotated_image, caption="Uploaded Image", width=200)
 
             if col2.button("Save Device"):
                 # Connect to the database
@@ -362,42 +362,28 @@ with devices:
                     if friendly_name == "None":
                         friendly_name = None
                     
-                    if old_values is None:
-                        old_pos = None
-                        old_location = None
-                        old_friendly_name = None
-                        old_notes = None
-                        old_image_bytes = None
+                    # Convert the image to bytes if it's uploaded
+                    image_bytes = image_upload.getvalue() if image_upload else old_values[4]
                     
-                    if old_values:
-                        # Convert the image to bytes if it's uploaded
-                        image_bytes = image_upload.read() if image_upload else old_values[5]
+                    # Update the data in the SQL database
+                    update_query = f"UPDATE DEVICES SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
+                    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cursor.execute(update_query, (pos, location, friendly_name, notes, image_bytes, timestamp, selected_device_serial))
 
-                        # Update the data in the SQL database
-                        update_query = f"UPDATE DEVICES SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
-                        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        # Check if each attribute in old_values is not null and assign to variables
-                        old_pos = old_values[0] if old_values[0] is not None else None
-                        old_location = old_values[1] if old_values[1] is not None else None
-                        old_friendly_name = old_values[2] if old_values[2] is not None else None
-                        old_notes = old_values[3] if old_values[3] is not None else None
-                        old_image_bytes = old_values[4] if old_values[4] is not None else None
-                        cursor.execute(update_query, (pos, location, friendly_name, notes, image_bytes, timestamp, selected_device_serial))
+                    print("Image bytes before updating database:", image_bytes)
 
-                        # Insert the old values into the HISTORY table
-                        insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-                        cursor.execute(insert_history_query, (timestamp, selected_device_serial, old_values[1], old_values[2], old_values[3], old_values[4], old_values[5], location, friendly_name, notes, image_bytes))
+                    # Insert the old values into the HISTORY table
+                    insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+                    cursor.execute(insert_history_query, (timestamp, selected_device_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, friendly_name, notes, image_bytes))
 
-                        # Commit the changes
-                        conn.commit()
-                        st.success("Changes saved successfully!")
+                    # Commit the changes
+                    conn.commit()
+                    st.success("Changes saved successfully!")
 
-                        # Refresh the data in the app
-                        df_devices = load_data("DEVICES")
-                        df_components = load_data("COMPONENTS")
-                        df_history = load_data("HISTORY")
-                    else:
-                        st.error("")
+                    # Refresh the data in the app
+                    df_devices = load_data("DEVICES")
+                    df_components = load_data("COMPONENTS")
+                    df_history = load_data("HISTORY")
 
                 except sqlite3.Error as e:
                     st.error(f"Error updating data: {e}")
@@ -469,7 +455,7 @@ with components:
         if 'IMAGE' in filtered_components.columns:
             existing_image = filtered_components.at[selected_component_index, 'IMAGE']
             if existing_image:
-                col2.image(existing_image, use_column_width=True)
+                col2.image(existing_image, width=200)
                 
         # File upload for image in the right column
         image_upload = None
@@ -478,10 +464,7 @@ with components:
         # Check if an image is uploaded
         if image_upload:
             uploaded_image = Image.open(io.BytesIO(image_upload.read()))
-            target_size = (400, 400)
-            resized_image = uploaded_image.resize(target_size)
-            rotated_image = resized_image.rotate(270, expand=True)
-            st.image(rotated_image, caption="Uploaded Image", use_column_width=True)
+            col2.image(uploaded_image, width=200)
 
         
         selected_connection_serial = friendly_name_to_serial.get(connection)
@@ -496,7 +479,7 @@ with components:
                 old_values = cursor.execute(fetch_old_values_query, (selected_component_serial,)).fetchone()
                 
                 # Convert the image to bytes if it's uploaded
-                image_bytes = image_upload.read() if image_upload else old_values[4]
+                image_bytes = image_upload.getvalue() if image_upload else old_values[4]
 
                 # Update the data in the SQL database
                 timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
