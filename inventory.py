@@ -27,8 +27,8 @@ st.set_page_config(page_title= "HC Hardware",
 ### Version 0.9 
 # Roadmap:
 - Ability to use a checkbox to affect changes on the component when changing device.
-- Change the logic for editing components and devices.
-- Create new template for Github'''
+- Making the location dropdowns into 'selectbox' attribute type.
+- Create new template for Github!'''
                        })
 
 hide_streamlit_style = """
@@ -377,7 +377,7 @@ with components:
     col1.subheader('Components')
    
     locations_list = ['All'] + list(df_components['LOCATION'].unique())
-    selected_location = col1.selectbox("Select a location", locations_list)
+    selected_location = col1.selectbox("Select a location", locations_list) #I'd like to move this to a select box soon.
     type_list = ['All'] + list(df_components['TYPE'].unique())
     selected_list = col1.selectbox("Select a type", type_list)
     # Search bar for component lookup
@@ -404,10 +404,11 @@ with components:
 ).tolist()
     # Create a mapping between display names and serial numbers
     display_name_to_serial = {display_name: serial for display_name, serial in zip(available_components, filtered_components['S/N'].tolist())}
+    serial_to_display_name = {serial: display_name for serial, display_name in zip(available_components, filtered_components['S/N'].tolist())}
 
     # Dropdown to select a component from the filtered list
     selected_component_display = col2.selectbox("Select a component to edit", available_components)
-
+    friendly_name_to_serial = df_devices.set_index('FRIENDLY NAME')['S/N'].to_dict()
     # Get the corresponding serial number based on the displayed name
     selected_component_serial = display_name_to_serial.get(selected_component_display, None)
 
@@ -421,7 +422,13 @@ with components:
         location_options = filtered_components['LOCATION'].unique()
         location = col2.selectbox("Component Location", location_options, index=location_options.tolist().index(filtered_components.at[selected_component_index, 'LOCATION']))
         connection_options = df_devices['FRIENDLY NAME'].unique()
-        connection = col2.selectbox("Component Connection", connection_options, index=connection_options.tolist().index(filtered_devices.at[selected_device_index, 'FRIENDLY NAME']))
+        
+        # Get current component connection
+        current_connection_serial = filtered_components.at[selected_component_index, 'CONNECTED']
+        current_connection = df_devices[df_devices['S/N'] == current_connection_serial]['FRIENDLY NAME'].iloc[0] if current_connection_serial else None
+        connection_options = df_devices['FRIENDLY NAME'].unique()
+        default_connection_index = connection_options.tolist().index(current_connection) if current_connection in connection_options else 0
+        connection = col2.selectbox("Component Connection", connection_options, index=default_connection_index)
         notes = col2.text_input("Component Notes", filtered_components.at[selected_component_index, 'NOTES'])
         # Display existing image if available
         if 'IMAGE' in filtered_components.columns:
@@ -441,6 +448,8 @@ with components:
             rotated_image = resized_image.rotate(270, expand=True)
             st.image(rotated_image, caption="Uploaded Image", use_column_width=True)
 
+        
+        selected_connection_serial = friendly_name_to_serial.get(connection)
         if col2.button("Save Component"):
             # Connect to the database
             conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
@@ -460,11 +469,11 @@ with components:
                     notes = None
                 # Update the data in the SQL database
                 update_query = f"UPDATE COMPONENTS SET POS = ?, LOCATION = ?, CONNECTED = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
-                cursor.execute(update_query, (pos, location, connection, notes, image_bytes, timestamp, selected_component_serial))
+                cursor.execute(update_query, (pos, location, selected_connection_serial, notes, image_bytes, timestamp, selected_component_serial))
 
                 # Insert the old values into the HISTORY table
                 insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-                cursor.execute(insert_history_query, (timestamp, selected_component_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, connection, notes, image_bytes))
+                cursor.execute(insert_history_query, (timestamp, selected_component_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, selected_connection_serial, notes, image_bytes))
 
                 # Commit the changes
                 conn.commit()
