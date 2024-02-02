@@ -84,6 +84,14 @@ def load_data(table):
     # Return both the DataFrame and the cursor
     return df
 
+def get_serial_number(friendly_name):
+    # Assuming df_devices is your DataFrame containing device information
+    device_row = df_devices[df_devices['FRIENDLY NAME'] == friendly_name]
+    if not device_row.empty:
+        return device_row.iloc[0]['S/N']
+    else:
+        return None  # Handle case where no matching device is found
+
 df_devices = load_data("DEVICES")
 df_components = load_data("COMPONENTS")
 df_history = load_data("HISTORY")
@@ -206,11 +214,11 @@ if add_component_submit:
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             # Execute the query
-            cursor.execute(insert_query, (component_pos, component_type, component_sn, component_location, component_connected, component_notes, component_image_bytes, timestamp))
+            cursor.execute(insert_query, (component_pos, component_type, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, timestamp))
 
             # Insert the new values into the HISTORY table
             insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?);"
-            cursor.execute(insert_history_query, (timestamp, component_sn, component_location, component_connected, device_notes, device_image_bytes))
+            cursor.execute(insert_history_query, (timestamp, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes))
 
             # Commit the changes
             conn.commit()
@@ -235,30 +243,38 @@ overview, devices, components, history = st.columns(4)
 overview, devices, components, history = st.tabs(["Overview", "Devices", "Components", "History"])
 
 with overview:
-    st.subheader('Breakdown by location')
+    col1, col2 = st.columns(2)
+    col1.subheader('Breakdown by location')
     
-    # Assuming 'CHANGE TIME' is the timestamp column in your DataFrame
-    df_history['CHANGE TIME'] = pd.to_datetime(df_history['CHANGE TIME'])
-
-    # Calculate the timestamp for 24 hours ago
-    twenty_four_hours_ago = datetime.datetime.now() - datetime.timedelta(hours=24)
-
     # Count the number of changes in the last 24 hours
+    df_history['CHANGE TIME'] = pd.to_datetime(df_history['CHANGE TIME'])
+    twenty_four_hours_ago = datetime.datetime.now() - datetime.timedelta(hours=24)
     changes_last_24_hours = df_history[df_history['CHANGE TIME'] >= twenty_four_hours_ago].shape[0]
-
-    # Display the counter
-    st.write(f"Changes in the last 24 hours: {changes_last_24_hours}")
+    col1.write(f"Changes in the last 24 hours: {changes_last_24_hours}")
     
-    # Count the number of devices without a photo
+    # Count the number without a photo
+    total_devices = df_devices["S/N"].count()
+    total_components = df_components["S/N"].count()
     devices_without_photo = df_devices['IMAGE'].isnull().sum()
+    components_without_photo = df_components['IMAGE'].isnull().sum()
+    stored_assets = df_devices[df_devices['LOCATION'] == 'WAREHOUSE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'WAREHOUSE']['LOCATION'].count())
+    unknown_assets = df_devices[df_devices['LOCATION'] == 'UNKNOWN']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'UNKNOWN']['LOCATION'].count())
+    wasted_assets = df_devices[df_devices['LOCATION'] == 'E-WASTE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'E-WASTE']['LOCATION'].count())
 
     # Display the counter
-    st.write(f"Devices without a photo: {devices_without_photo}")
+    col1.write(f'''
+               Right now there are {total_devices} devices in total with {total_components} connected components.
+               There are {devices_without_photo} devices and {components_without_photo} that do not have a photo.
+               {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_assets} have been sent to E-Waste.
+               There has been {changes_last_24_hours} change(s) to the database in the last 24 hours.
+               ''')
     
-    grouped_data = df_devices.groupby("LOCATION")["S/N"].nunique().reset_index()
+    location_data = df_devices.groupby("LOCATION")["S/N"].nunique().reset_index()
+    POS_data = df_devices.groupby("POS")["S/N"].nunique()
     
     # Display the data in a table
-    st.dataframe(grouped_data, hide_index=True, use_container_width=True,)
+    col2.dataframe(location_data, hide_index=True, use_container_width=True,)
+    col1.dataframe(POS_data)
 
 with devices:
     col1, col2 = st.columns(2)
@@ -513,6 +529,10 @@ with history:
 
     # Create a DataFrame from the fetched data
     df_history = pd.DataFrame(history_data, columns=[col[0] for col in cursor.description])
+    
+    # Sort DataFrame by 'CHANGE TIME' column in descending order
+    df_history['CHANGE TIME'] = pd.to_datetime(df_history['CHANGE TIME'])
+    df_history = df_history.sort_values(by='CHANGE TIME', ascending=False)
 
     # Filter history data based on search input across all columns
     if search_history:

@@ -6,5 +6,7 @@
 !.gitattributes
 !inventory.py
 !tabletemplate.db
+!HARDWARE ICON.ico
+!readme.txt
 *.db
 tabletemplate.db
