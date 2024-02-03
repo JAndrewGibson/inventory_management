@@ -5,8 +5,7 @@
 !.gitignore
 !.gitattributes
 !inventory.py
-!tabletemplate.db
+!POSHardwareTEMPLATE.db
 !HARDWARE ICON.ico
 !readme.txt
-*.db
-tabletemplate.db
+
