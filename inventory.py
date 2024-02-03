@@ -27,7 +27,7 @@ st.set_page_config(page_title= "HC Hardware",
 ### Version 0.9 
 # Roadmap:
 - Ability to use a checkbox to affect changes on the component when changing device.
-- Making the location dropdowns into 'selectbox' attribute type.
+- Making the location dropdowns into 'selectbox' attribute type on the component page.
 - Create new template for Github!'''
                        })
 
@@ -92,9 +92,10 @@ def get_serial_number(friendly_name):
     else:
         return None  # Handle case where no matching device is found
 
-df_devices = load_data("DEVICES")
-df_components = load_data("COMPONENTS")
+df_devices = load_data("DEVICES").sort_values(by='LAST EDIT', ascending=False)
+df_components = load_data("COMPONENTS").sort_values(by='LAST EDIT', ascending=False)
 df_history = load_data("HISTORY")
+df_presets = load_data("PRESETS")
 
 # Sidebar menu
 st.sidebar.title("Actions")
@@ -112,8 +113,9 @@ st.sidebar.download_button(
     key="download_excel_button"
 )
 
-existing_locations = list(df_devices['LOCATION'].unique())
-existing_types = list(df_devices['TYPE'].unique())
+existing_locations = list(df_presets['LOCATION'].unique())
+existing_device_types = list(df_devices['TYPE'].unique())
+existing_component_types = list(df_components['TYPE'].unique())
 existing_devices = [name for name in df_devices['FRIENDLY NAME'].unique() if name is not None and name.strip() != ""]
 
 # Form to add a new device
@@ -123,9 +125,9 @@ with st.sidebar.expander("**Add Device**"):
         device_pos = st.selectbox("POS", [""] + pos_options)
         device_sn = st.text_input("S/N (Serial Number)", "", key="device_sn")
         device_location = st.selectbox("Location", [""] + existing_locations)
-        device_type = st.selectbox("Type", [""] + existing_types)
+        device_type = st.selectbox("Type", [""] + existing_device_types)
         device_friendly_name = st.text_input("Friendly Name", "")
-        device_notes = st.text_input("Notes", "")
+        device_notes = st.text_input("Notes", "None")
 
         # File upload for new device image
         device_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
@@ -139,9 +141,9 @@ with st.sidebar.expander("**Add Component**"):
         component_pos = st.selectbox("POS", [""] + pos_options)
         component_sn = st.text_input("S/N (Serial Number)", "", key="component_sn")
         component_location = st.selectbox("Location", [""] + existing_locations)
-        component_type = st.selectbox("Type", [""] + existing_types)
+        component_type = st.selectbox("Type", [""] + existing_component_types)
         component_connected = st.selectbox("Connected",[""] + existing_devices)
-        component_notes = st.text_input("Notes", "")
+        component_notes = st.text_input("Notes", "None")
 
         # File upload for new device image
         component_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
@@ -153,14 +155,13 @@ with st.sidebar.expander("**Add Component**"):
 if add_device_submit:
     # Validate and process the form data (you can add your logic here)
     if device_sn and device_pos and device_location and device_type:
+        if device_notes == "None" or "":
+            device_notes = None
         # Connect to the database and add the new device
         conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
         cursor = conn.cursor()
 
         try:
-            # Insert the new device into the DEVICES table
-            insert_query = "INSERT INTO DEVICES (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, NOTES, IMAGE, `LAST EDIT`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);"
-            
             # Convert the new image to bytes
             device_image_bytes = None
             if device_image_upload:
@@ -169,11 +170,11 @@ if add_device_submit:
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            # Execute the query
+            insert_query = "INSERT INTO DEVICES (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, NOTES, IMAGE, `LAST EDIT`) VALUES (?, ?, ?, ?, ?, ?, ?, ?);"
             cursor.execute(insert_query, (device_sn, device_pos, device_location, device_type, device_friendly_name, device_notes, device_image_bytes, timestamp))
 
             # Insert the new values into the HISTORY table
-            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?);"
+            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?);"
             cursor.execute(insert_history_query, (timestamp, device_sn, device_location, device_friendly_name, device_notes, device_image_bytes))
 
             # Commit the changes
@@ -197,6 +198,8 @@ if add_device_submit:
 if add_component_submit:
     # Validate and process the form data (you can add your logic here)
     if component_sn and component_pos and component_location and component_type:
+        if component_notes == "None" or "":
+            component_notes = None
         # Connect to the database and add the new device
         conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
         cursor = conn.cursor()
@@ -280,7 +283,7 @@ with devices:
     col1, col2 = st.columns(2)
     col1.subheader('Devices')
    
-    locations_list = ['All'] + list(df_devices['LOCATION'].unique())
+    locations_list = ['All'] + list(existing_locations)
     selected_locations = col1.multiselect("Select a location", locations_list, default=["All"])
     type_list = ['All'] + list(df_devices['TYPE'].unique())
     selected_types = col1.multiselect("Select a type", type_list, default=["All"])
@@ -397,7 +400,7 @@ with components:
     col1, col2 = st.columns(2)
     col1.subheader('Components')
    
-    locations_list = ['All'] + list(df_components['LOCATION'].unique())
+    locations_list = ['All'] + list(existing_locations)
     selected_location = col1.selectbox("Select a location", locations_list) #I'd like to move this to a select box soon.
     type_list = ['All'] + list(df_components['TYPE'].unique())
     selected_list = col1.selectbox("Select a type", type_list)
@@ -419,10 +422,7 @@ with components:
       
     col2.subheader('Edit Component')
     # Dropdown to select a component from the filtered list
-    available_components = filtered_components.apply(
-    lambda row: f"{row['TYPE']} at {row['LOCATION']}",
-    axis=1
-).tolist()
+    available_components = filtered_components.apply(lambda row: f"{row['TYPE']} at {row['LOCATION']}", axis=1).tolist()
     # Create a mapping between display names and serial numbers
     display_name_to_serial = {display_name: serial for display_name, serial in zip(available_components, filtered_components['S/N'].tolist())}
     serial_to_display_name = {serial: display_name for serial, display_name in zip(available_components, filtered_components['S/N'].tolist())}
