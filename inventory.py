@@ -84,6 +84,8 @@ def load_data(table):
     # Return both the DataFrame and the cursor
     return df
 
+@st.cache
+
 def get_serial_number(friendly_name):
     # Assuming df_devices is your DataFrame containing device information
     device_row = df_devices[df_devices['FRIENDLY NAME'] == friendly_name]
@@ -151,6 +153,16 @@ with st.sidebar.expander("**Add Component**"):
         # Submit button
         add_component_submit = st.form_submit_button("Add Component")
 
+with st.sidebar.expander("**Add Location**"):
+    with st.form("Add New Location"):
+        location_name = st.text_input("Location Name", "")
+
+        # File upload for new device image
+        location_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
+
+        # Submit button
+        add_location_submit = st.form_submit_button("Add Location")
+
 # Process the form submission
 if add_device_submit:
     # Validate and process the form data (you can add your logic here)
@@ -174,8 +186,8 @@ if add_device_submit:
             cursor.execute(insert_query, (device_sn, device_pos, device_location, device_type, device_friendly_name, device_notes, device_image_bytes, timestamp))
 
             # Insert the new values into the HISTORY table
-            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?);"
-            cursor.execute(insert_history_query, (timestamp, device_sn, device_location, device_friendly_name, device_notes, device_image_bytes))
+            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?);"
+            cursor.execute(insert_history_query, (timestamp, device_sn, device_location, device_friendly_name, device_notes, device_image_bytes, "NEW DEVICE"))
 
             # Commit the changes
             conn.commit()
@@ -220,12 +232,12 @@ if add_component_submit:
             cursor.execute(insert_query, (component_pos, component_type, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, timestamp))
 
             # Insert the new values into the HISTORY table
-            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?);"
-            cursor.execute(insert_history_query, (timestamp, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes))
+            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?);"
+            cursor.execute(insert_history_query, (timestamp, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, "NEW COMPONENT"))
 
             # Commit the changes
             conn.commit()
-            st.success("New device added successfully!")
+            st.success("New component added successfully!")
 
             # Refresh the data in the app
             df_devices = load_data("DEVICES")
@@ -233,7 +245,50 @@ if add_component_submit:
             df_history = load_data("HISTORY")
 
         except sqlite3.Error as e:
-            st.sidebar.error(f"Error adding new device: {e}")
+            st.sidebar.error(f"Error adding new component: {e}")
+
+        finally:
+            # Close the connection
+            conn.close()
+    else:
+        st.sidebar.warning("Please fill out all required fields for component entry (S/N, POS, Location and Type).")
+
+if add_location_submit:
+    # Validate and process the form data (you can add your logic here)
+    if location_name:
+        # Connect to the database and add the new device
+        conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
+        cursor = conn.cursor()
+
+        try:
+            # Convert the new image to bytes
+            location_image_bytes = None
+            if location_image_upload:
+                clocation_image_bytes = location_image_upload.read()
+
+            # Get the current timestamp
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Execute the query
+            insert_query = "INSERT INTO PRESETS (LOCATION, IMAGE) VALUES (?, ?);"
+            cursor.execute(insert_query, (location_name, location_image_bytes))
+
+            # Insert the new values into the HISTORY table
+            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'NEW LOCATION', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?);"
+            cursor.execute(insert_history_query, (timestamp, location_name, location_image_bytes, "NEW LOCATION"))
+
+            # Commit the changes
+            conn.commit()
+            st.success("New location added successfully!")
+
+            # Refresh the data in the app
+            df_devices = load_data("DEVICES")
+            df_components = load_data("COMPONENTS")
+            df_history = load_data("HISTORY")
+            df_presets = load_data("PRESETS")
+
+        except sqlite3.Error as e:
+            st.sidebar.error(f"Error adding new location: {e}")
 
         finally:
             # Close the connection
@@ -267,7 +322,7 @@ with overview:
     # Display the counter
     col1.write(f'''
                Right now there are {total_devices} devices in total with {total_components} connected components.
-               There are {devices_without_photo} devices and {components_without_photo} that do not have a photo.
+               There are {devices_without_photo} devices and {components_without_photo} components that do not have a photo.
                {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_assets} have been sent to E-Waste.
                There has been {changes_last_24_hours} change(s) to the database in the last 24 hours.
                ''')
@@ -376,8 +431,8 @@ with devices:
                     print("Image bytes before updating database:", image_bytes)
 
                     # Insert the old values into the HISTORY table
-                    insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-                    cursor.execute(insert_history_query, (timestamp, selected_device_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, friendly_name, notes, image_bytes))
+                    insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO','CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+                    cursor.execute(insert_history_query, (timestamp, selected_device_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, friendly_name, notes, image_bytes, "DEVICE UPDATE"))
 
                     # Commit the changes
                     conn.commit()
@@ -490,8 +545,8 @@ with components:
                 cursor.execute(update_query, (pos, location, selected_connection_serial, notes, image_bytes, timestamp, selected_component_serial))
 
                 # Insert the old values into the HISTORY table
-                insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-                cursor.execute(insert_history_query, (timestamp, selected_component_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, selected_connection_serial, notes, image_bytes))
+                insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+                cursor.execute(insert_history_query, (timestamp, selected_component_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, selected_connection_serial, notes, image_bytes, "COMPONENT UPDATE"))
 
                 # Commit the changes
                 conn.commit()
@@ -542,7 +597,7 @@ with history:
         st.dataframe(filtered_history, use_container_width=True, hide_index=True)
     else:
         # Display all history data
-        st.dataframe(df_history, use_container_width=True, hide_index=True, column_order=("CHANGE TIME","DEVICE S/N","PREVIOUS LOCATION","PREVIOUS FRIENDLY NAME", "PREVIOUS CONNECTION","PREVIOUS NOTES","NEW LOCATION","NEW FRIENDLY NAME","NEW CONNECTION","NEW NOTES"))
+        st.dataframe(df_history, use_container_width=True, hide_index=True, column_order=("CHANGE LOG","DEVICE S/N","PREVIOUS LOCATION","NEW LOCATION","PREVIOUS FRIENDLY NAME","NEW FRIENDLY NAME","PREVIOUS CONNECTION","NEW CONNECTION","PREVIOUS NOTES","NEW NOTES","CHANGE TIME"))
 
     # Close the connection
     conn.close()
