@@ -84,7 +84,7 @@ def load_data(table):
     # Return both the DataFrame and the cursor
     return df
 
-@st.cache
+@st.cache_data
 
 def get_serial_number(friendly_name):
     # Assuming df_devices is your DataFrame containing device information
@@ -302,7 +302,7 @@ overview, devices, components, history = st.tabs(["Overview", "Devices", "Compon
 
 with overview:
     col1, col2 = st.columns(2)
-    col1.subheader('Breakdown by location')
+    col1.subheader('Overview')
     
     # Count the number of changes in the last 24 hours
     df_history['CHANGE TIME'] = pd.to_datetime(df_history['CHANGE TIME'])
@@ -313,18 +313,22 @@ with overview:
     # Count the number without a photo
     total_devices = df_devices["S/N"].count()
     total_components = df_components["S/N"].count()
+    wasted_devices = df_devices[df_devices['LOCATION'] == 'E-WASTED']['LOCATION'].count()
+    wasted_components = df_components[df_components['LOCATION'] == 'E-WASTED']['LOCATION'].count()
     devices_without_photo = df_devices['IMAGE'].isnull().sum()
     components_without_photo = df_components['IMAGE'].isnull().sum()
-    stored_assets = df_devices[df_devices['LOCATION'] == 'WAREHOUSE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'WAREHOUSE']['LOCATION'].count())
-    unknown_assets = df_devices[df_devices['LOCATION'] == 'UNKNOWN']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'UNKNOWN']['LOCATION'].count())
-    wasted_assets = df_devices[df_devices['LOCATION'] == 'E-WASTE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'E-WASTE']['LOCATION'].count())
+    stored_assets = df_devices[df_devices['LOCATION'] == 'WAREHOUSE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'WAREHOUSE']['LOCATION'].count()) + (df_devices[df_devices['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count()) + (df_components[df_components['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count())
+    unknown_assets = df_devices[df_devices['LOCATION'] == 'UNKNOWN']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'UNKNOWN']['LOCATION'].count())    
+    
 
     # Display the counter
     col1.write(f'''
-               Right now there are {total_devices} devices in total with {total_components} connected components.
+               Right now there are {total_devices-wasted_devices} active devices and {total_components-wasted_components} components.
                There are {devices_without_photo} devices and {components_without_photo} components that do not have a photo.
-               {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_assets} have been sent to E-Waste.
+               {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_devices + wasted_components} assets have been sent to E-Waste.
                There has been {changes_last_24_hours} change(s) to the database in the last 24 hours.
+               
+               Got ideas for what should be displayed on this page? Tell Andrew!
                ''')
     
     location_data = df_devices.groupby("LOCATION")["S/N"].nunique().reset_index()
@@ -380,7 +384,7 @@ with devices:
         if not filtered_devices.empty:
             selected_device_index = filtered_devices[filtered_devices['S/N'] == selected_device_serial].index[0]
 
-            # Add editable fields to the left column
+            # Editable Fields
             pos_options = filtered_devices['POS'].unique()
             pos = col2.selectbox("Device POS", pos_options, index=pos_options.tolist().index(filtered_devices.at[selected_device_index, 'POS']))
             location_options = filtered_devices['LOCATION'].unique()
@@ -566,7 +570,7 @@ with components:
         st.write("Oops, no devices...")
 
 with history:
-    st.subheader('History Data')
+    st.subheader('History')
 
     # Search bar for history lookup
     search_history = st.text_input("Search in History", "")
