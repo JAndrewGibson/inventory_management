@@ -46,19 +46,21 @@ def download_excel():
 
     # Read data from the DEVICES table into a DataFrame
     df_devices = pd.read_sql_query("SELECT * FROM DEVICES;", conn)
-
-    # Read data from the COMPONENTS table into a DataFrame
+    df_history = pd.read_sql_query("SELECT * FROM HISTORY;", conn)
     df_components = pd.read_sql_query("SELECT * FROM COMPONENTS;", conn)
 
     # Exclude the 'IMAGE' column from both DataFrames
     df_devices = df_devices.drop(columns=['IMAGE'])
     df_components = df_components.drop(columns=['IMAGE'])
+    df_history = df_history.drop(columns=["PREVIOUS PHOTO","NEW PHOTO"])
+    
 
     # Convert DataFrames to Excel with two sheets
     excel_data = BytesIO()
     with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
         df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
         df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
+        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
 
     # Save the Excel data to a BytesIO buffer
     excel_data.seek(0)
