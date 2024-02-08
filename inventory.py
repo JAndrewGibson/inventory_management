@@ -86,8 +86,6 @@ def load_data(table):
     # Return both the DataFrame and the cursor
     return df
 
-@st.cache_data
-
 def get_serial_number(friendly_name):
     # Assuming df_devices is your DataFrame containing device information
     device_row = df_devices[df_devices['FRIENDLY NAME'] == friendly_name]
@@ -161,6 +159,9 @@ with st.sidebar.expander("**Add Location**"):
 
         # File upload for new device image
         location_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
+        
+        if location_image_upload:
+            st.image(location_image_upload)
 
         # Submit button
         add_location_submit = st.form_submit_button("Add Location")
@@ -266,7 +267,7 @@ if add_location_submit:
             # Convert the new image to bytes
             location_image_bytes = None
             if location_image_upload:
-                clocation_image_bytes = location_image_upload.read()
+                location_image_bytes = Image.open(io.BytesIO(location_image_upload.read()))
 
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -296,7 +297,7 @@ if add_location_submit:
             # Close the connection
             conn.close()
     else:
-        st.sidebar.warning("Please fill out all required fields for device entry (S/N, POS, Location and Type).")
+        st.sidebar.warning("Please name your location.")
 
 overview, devices, components, history = st.columns(4)
 
