@@ -7,8 +7,7 @@ import io
 from io import BytesIO
 import pandas as pd
 from PIL import Image
-
-absolute_path = os.path.dirname(__file__)
+from sqlalchemy import text
 
 date = datetime.datetime.now()
 today = date.strftime("%Y-%m-%d")
@@ -31,6 +30,15 @@ st.set_page_config(page_title= "HC Hardware",
 - Create new template for Github!'''
                        })
 
+database_file = "POSHardwareNOIMAGE.db" # Edit this to your actual database file
+absolute_path = os.path.dirname(__file__)
+
+def refresh_data():
+    st.cache_data.clear()
+    st.rerun()
+
+conn = st.connection(name="connection", type="sql", url="sqlite:///" + os.path.join(absolute_path, database_file))
+
 hide_streamlit_style = """
             <style>
             footer {visibility: hidden;}
@@ -41,13 +49,10 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 st.title("HC Hardware")
 
 def download_excel():
-    # Connect to the SQLite database
-    conn = sqlite3.connect(os.path.join(absolute_path, 'POSHardware.db'))
-
     # Read data from the DEVICES table into a DataFrame
-    df_devices = pd.read_sql_query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES;", conn)
-    df_history = pd.read_sql_query("SELECT `CHANGE TIME`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY;", conn)
-    df_components = pd.read_sql_query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS;", conn)
+    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES;")
+    df_history = conn.query("SELECT `CHANGE TIME`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY;")
+    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS;")
 
     # Convert DataFrames to Excel with two sheets
     excel_data = BytesIO()
@@ -59,12 +64,9 @@ def download_excel():
     # Save the Excel data to a BytesIO buffer
     excel_data.seek(0)
 
-    # Close the connection
-    conn.close()
-
     return excel_data
 
-def fetch_data(cursor, table_name):
+def fetch_data(table_name):
     if table_name == "DEVICES":
         print("Fetching device data...")
         query = f"SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM {table_name};"
@@ -79,20 +81,8 @@ def fetch_data(cursor, table_name):
         query = f"SELECT LOCATION FROM {table_name};"
     else:
         query = f"SELECT * FROM {table_name};"
-    result = cursor.execute(query).fetchall()
+    result = conn.query(query)
     return result
-
-@st.cache_resource
-def load_data(table):
-    # Connect to SQLite database
-    conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
-    cursor = conn.cursor()
-
-    data = fetch_data(cursor, table)
-    df = pd.DataFrame(data, columns=[col[0] for col in cursor.description])
-
-    # Return both the DataFrame and the cursor
-    return df
 
 def get_serial_number(friendly_name):
     # Assuming df_devices is your DataFrame containing device information
@@ -102,20 +92,16 @@ def get_serial_number(friendly_name):
     else:
         return None  # Handle case where no matching device is found
 
-df_devices = load_data("DEVICES").sort_values(by='LAST EDIT', ascending=False)
-df_components = load_data("COMPONENTS").sort_values(by='LAST EDIT', ascending=False)
-df_history = load_data("HISTORY")
-df_presets = load_data("PRESETS")
+df_devices = fetch_data("DEVICES").sort_values(by='LAST EDIT', ascending=False)
+df_components = fetch_data("COMPONENTS").sort_values(by='LAST EDIT', ascending=False)
+df_history = fetch_data("HISTORY")
+df_presets = fetch_data("PRESETS")
 
 # Sidebar menu
 st.sidebar.title("Actions")
 
 if st.sidebar.button("Refresh data"):
-    st.cache_resource.clear()
-    df_devices = load_data("DEVICES")
-    df_components = load_data("COMPONENTS")
-    df_history = load_data("HISTORY")
-    df_presets = load_data("PRESETS")
+    refresh_data()
     
 # Download the Excel file
 st.sidebar.download_button(
@@ -182,9 +168,6 @@ if add_device_submit:
     if device_sn and device_pos and device_location and device_type:
         if device_notes == "None" or "":
             device_notes = None
-        # Connect to the database and add the new device
-        conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
-        cursor = conn.cursor()
 
         try:
             # Convert the new image to bytes
@@ -195,28 +178,20 @@ if add_device_submit:
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            insert_query = "INSERT INTO DEVICES (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, NOTES, IMAGE, `LAST EDIT`) VALUES (?, ?, ?, ?, ?, ?, ?, ?);"
-            cursor.execute(insert_query, (device_sn, device_pos, device_location, device_type, device_friendly_name, device_notes, device_image_bytes, timestamp))
+            insert_query = text("INSERT INTO DEVICES (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, NOTES, IMAGE, `LAST EDIT`) VALUES (:a, :b, :c, :d, :e, :f, :g, :h);")
+            insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g);")
+            with conn.session as session:
+                session.execute(insert_query, {"a": device_sn, "b": device_pos, "c": device_location, "d": device_type, "e": device_friendly_name, "f": device_notes, "g": device_image_bytes, "h": timestamp})
+                session.execute(insert_history_query, {"a": timestamp, "b": device_sn, "c": device_location, "d": device_friendly_name, "e": device_notes, "f": device_image_bytes, "g": "NEW DEVICE"})
+                session.commit()
 
-            # Insert the new values into the HISTORY table
-            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?);"
-            cursor.execute(insert_history_query, (timestamp, device_sn, device_location, device_friendly_name, device_notes, device_image_bytes, "NEW DEVICE"))
-
-            # Commit the changes
-            conn.commit()
             st.success("New device added successfully!")
 
             # Refresh the data in the app
-            df_devices = load_data("DEVICES")
-            df_components = load_data("COMPONENTS")
-            df_history = load_data("HISTORY")
+            refresh_data()
 
         except sqlite3.Error as e:
             st.sidebar.error(f"Error adding new device: {e}")
-
-        finally:
-            # Close the connection
-            conn.close()
     else:
         st.sidebar.warning("Please fill out all required fields for device entry (S/N, POS, Location and Type).")
 
@@ -225,13 +200,9 @@ if add_component_submit:
     if component_sn and component_pos and component_location and component_type:
         if component_notes == "None" or "":
             component_notes = None
-        # Connect to the database and add the new device
-        conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
-        cursor = conn.cursor()
-
         try:
             # Insert the new component into the COMPONENT table
-            insert_query = "INSERT INTO COMPONENTS (POS, `TYPE`, `S/N`, LOCATION, CONNECTED, NOTES, IMAGE, `LAST EDIT`) VALUES (?, ?, ?, ?, ?, ?, ?, ?);"
+            
             
             # Convert the new image to bytes
             component_image_bytes = None
@@ -241,38 +212,31 @@ if add_component_submit:
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            # Execute the query
-            cursor.execute(insert_query, (component_pos, component_type, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, timestamp))
-
-            # Insert the new values into the HISTORY table
+            insert_query = "INSERT INTO COMPONENTS (POS, `TYPE`, `S/N`, LOCATION, CONNECTED, NOTES, IMAGE, `LAST EDIT`) VALUES (?, ?, ?, ?, ?, ?, ?, ?);"
             insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?);"
-            cursor.execute(insert_history_query, (timestamp, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, "NEW COMPONENT"))
 
-            # Commit the changes
-            conn.commit()
+            # Execute the query
+            with conn.session as session:
+                session.execute(insert_query, (component_pos, component_type, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, timestamp))
+                session.execute(insert_history_query, (timestamp, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, "NEW COMPONENT"))
+                session.commit()
+            
+            
             st.success("New component added successfully!")
 
             # Refresh the data in the app
-            df_devices = load_data("DEVICES")
-            df_components = load_data("COMPONENTS")
-            df_history = load_data("HISTORY")
+            df_devices = fetch_data("DEVICES")
+            df_components = fetch_data("COMPONENTS")
+            df_history = fetch_data("HISTORY")
 
         except sqlite3.Error as e:
             st.sidebar.error(f"Error adding new component: {e}")
-
-        finally:
-            # Close the connection
-            conn.close()
     else:
         st.sidebar.warning("Please fill out all required fields for component entry (S/N, POS, Location and Type).")
 
 if add_location_submit:
     # Validate and process the form data (you can add your logic here)
     if location_name:
-        # Connect to the database and add the new device
-        conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
-        cursor = conn.cursor()
-
         try:
             # Convert the new image to bytes
             location_image_bytes = None
@@ -284,28 +248,23 @@ if add_location_submit:
 
             # Execute the query
             insert_query = "INSERT INTO PRESETS (LOCATION, IMAGE) VALUES (?, ?);"
-            cursor.execute(insert_query, (location_name, location_image_bytes))
-
-            # Insert the new values into the HISTORY table
             insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'NEW LOCATION', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?);"
-            cursor.execute(insert_history_query, (timestamp, location_name, location_image_bytes, "NEW LOCATION"))
 
-            # Commit the changes
-            conn.commit()
+            with conn.session as session:
+                session.execute(insert_query, (location_name, location_image_bytes))
+                session.execute(insert_history_query, (timestamp, location_name, location_image_bytes, "NEW LOCATION"))
+                session.commit()
+
             st.success("New location added successfully!")
 
             # Refresh the data in the app
-            df_devices = load_data("DEVICES")
-            df_components = load_data("COMPONENTS")
-            df_history = load_data("HISTORY")
-            df_presets = load_data("PRESETS")
+            df_devices = fetch_data("DEVICES")
+            df_components = fetch_data("COMPONENTS")
+            df_history = fetch_data("HISTORY")
+            df_presets = fetch_data("PRESETS")
 
         except sqlite3.Error as e:
             st.sidebar.error(f"Error adding new location: {e}")
-
-        finally:
-            # Close the connection
-            conn.close()
     else:
         st.sidebar.warning("Please name your location.")
 
@@ -422,14 +381,10 @@ with devices:
                 col2.image(rotated_image, caption="Uploaded Image", width=200)
 
             if col2.button("Save Device"):
-                # Connect to the database
-                conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
-                cursor = conn.cursor()
-
                 try:
                     # Fetch the current values before the update
-                    fetch_old_values_query = "SELECT POS, LOCATION, `FRIENDLY NAME`, NOTES, IMAGE FROM DEVICES WHERE `S/N` = ?;"
-                    old_values = cursor.execute(fetch_old_values_query, (selected_device_serial,)).fetchone()
+                    fetch_old_values_query = "SELECT POS, LOCATION, `FRIENDLY NAME`, NOTES, IMAGE FROM DEVICES WHERE `S/N` = :a;"
+                    old_values = conn.query(fetch_old_values_query, params={"a": selected_device_serial})
                     
                     if notes == "None":
                         notes = None
@@ -437,33 +392,26 @@ with devices:
                         friendly_name = None
                     
                     # Convert the image to bytes if it's uploaded
-                    image_bytes = image_upload.getvalue() if image_upload else old_values[4]
+                    image_bytes = image_upload.getvalue() if image_upload else old_values.iat[0, 4]
+                    print("Image bytes before updating database:", image_bytes)
                     
                     # Update the data in the SQL database
-                    update_query = f"UPDATE DEVICES SET POS = ?, LOCATION = ?, `FRIENDLY NAME` = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
-                    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    cursor.execute(update_query, (pos, location, friendly_name, notes, image_bytes, timestamp, selected_device_serial))
-
-                    print("Image bytes before updating database:", image_bytes)
-
+                    update_query = text(f"UPDATE DEVICES SET POS = :a, LOCATION = :b, `FRIENDLY NAME` = :c, NOTES = :d, IMAGE = :e, `LAST EDIT` = :f WHERE `S/N` = :g;")
                     # Insert the old values into the HISTORY table
-                    insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO','CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-                    cursor.execute(insert_history_query, (timestamp, selected_device_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, friendly_name, notes, image_bytes, "DEVICE UPDATE"))
-
-                    # Commit the changes
-                    conn.commit()
+                    insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO','CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
+                    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    with conn.session as session:
+                        session.execute(update_query, {"a": pos, "b": location, "c": friendly_name, "d": notes, "e": image_bytes, "f": timestamp, "g": selected_device_serial})
+                        session.execute(insert_history_query, {"a": timestamp, "b": selected_device_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": friendly_name, "i": notes, "j": image_bytes, "k": "DEVICE UPDATE"})
+                        session.commit()
+                    
                     st.success("Changes saved successfully!")
 
                     # Refresh the data in the app
-                    df_devices = load_data("DEVICES")
-                    df_components = load_data("COMPONENTS")
-                    df_history = load_data("HISTORY")
+                    refresh_data()
 
                 except sqlite3.Error as e:
                     st.error(f"Error updating data: {e}")
-
-                finally:
-                    conn.close()
     else:
         col1.write("Oops, no devices... Check your search terms or contact Andrew!")
             
@@ -540,44 +488,36 @@ with components:
         
         selected_connection_serial = friendly_name_to_serial.get(connection)
         if col2.button("Save Component"):
-            # Connect to the database
-            conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
-            cursor = conn.cursor()
-
             try:
                 # Fetch the current values before the update
-                fetch_old_values_query = "SELECT POS, LOCATION, CONNECTED, NOTES, IMAGE FROM COMPONENTS WHERE `S/N` = ?;"
-                old_values = cursor.execute(fetch_old_values_query, (selected_component_serial,)).fetchone()
+                fetch_old_values_query = "SELECT POS, LOCATION, CONNECTED, NOTES, IMAGE FROM COMPONENTS WHERE `S/N` = :a;"
+                old_values = conn.query(fetch_old_values_query, params={"a": selected_component_serial})
+                print(old_values.head())
+                print(old_values.iat[0, 1])
                 
                 # Convert the image to bytes if it's uploaded
-                image_bytes = image_upload.getvalue() if image_upload else old_values[4]
+                image_bytes = image_upload.getvalue() if image_upload else old_values.iat[0, 4]
 
                 # Update the data in the SQL database
                 timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 if notes == "None":
                     notes = None
                 # Update the data in the SQL database
-                update_query = f"UPDATE COMPONENTS SET POS = ?, LOCATION = ?, CONNECTED = ?, NOTES = ?, IMAGE = ?, `LAST EDIT` = ? WHERE `S/N` = ?;"
-                cursor.execute(update_query, (pos, location, selected_connection_serial, notes, image_bytes, timestamp, selected_component_serial))
+                update_query = text(f"UPDATE COMPONENTS SET POS = :a, LOCATION = :b, CONNECTED = :c, NOTES = :d, IMAGE = :e, `LAST EDIT` = :f WHERE `S/N` = :g;")
+                 # Insert the old values into the HISTORY table
+                insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
+                with conn.session as session:
+                    session.execute(update_query, {"a": pos, "b": location, "c": selected_connection_serial, "d": notes, "e": image_bytes, "f": timestamp, "g": selected_component_serial})
+                    session.execute(insert_history_query, {"a": timestamp, "b": selected_component_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": selected_connection_serial, "i": notes, "j": image_bytes, "k": "COMPONENT UPDATE"})
+                    session.commit()
 
-                # Insert the old values into the HISTORY table
-                insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-                cursor.execute(insert_history_query, (timestamp, selected_component_serial, old_values[1], old_values[2], old_values[3], old_values[4], location, selected_connection_serial, notes, image_bytes, "COMPONENT UPDATE"))
-
-                # Commit the changes
-                conn.commit()
                 st.success("Changes saved successfully!")
 
                 # Refresh the data in the app
-                df_devices = load_data("DEVICES")
-                df_components = load_data("COMPONENTS")
-                df_history = load_data("HISTORY")
+                refresh_data()
 
             except sqlite3.Error as e:
                 st.error(f"Error updating data: {e}")
-
-            finally:
-                conn.close()
     else:
         st.write("Oops, no devices...")
 
@@ -590,18 +530,8 @@ with history:
     # Fetch data from the HISTORY table
     history_data_query = "SELECT * FROM HISTORY;"
 
-    # Connect to the database
-    conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
-    cursor = conn.cursor()
-
-    # Execute the history data query
-    cursor.execute(history_data_query)
-
     # Fetch all rows from the cursor
-    history_data = cursor.fetchall()
-
-    # Create a DataFrame from the fetched data
-    df_history = pd.DataFrame(history_data, columns=[col[0] for col in cursor.description])
+    df_history = conn.query(history_data_query)
     
     # Sort DataFrame by 'CHANGE TIME' column in descending order
     df_history['CHANGE TIME'] = pd.to_datetime(df_history['CHANGE TIME'])
@@ -614,6 +544,3 @@ with history:
     else:
         # Display all history data
         st.dataframe(df_history, use_container_width=True, hide_index=True, column_order=("CHANGE LOG","DEVICE S/N","PREVIOUS LOCATION","NEW LOCATION","PREVIOUS FRIENDLY NAME","NEW FRIENDLY NAME","PREVIOUS CONNECTION","NEW CONNECTION","PREVIOUS NOTES","NEW NOTES","CHANGE TIME"))
-
-    # Close the connection
-    conn.close()
