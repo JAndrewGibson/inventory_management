@@ -212,22 +212,20 @@ if add_component_submit:
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            insert_query = "INSERT INTO COMPONENTS (POS, `TYPE`, `S/N`, LOCATION, CONNECTED, NOTES, IMAGE, `LAST EDIT`) VALUES (?, ?, ?, ?, ?, ?, ?, ?);"
-            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?, ?, ?, ?);"
+            insert_query = text("INSERT INTO COMPONENTS (POS, `TYPE`, `S/N`, LOCATION, CONNECTED, NOTES, IMAGE, `LAST EDIT`) VALUES (:a, :b, :c, :d, :e, :f, :g, :h);")
+            insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g);")
 
             # Execute the query
             with conn.session as session:
-                session.execute(insert_query, (component_pos, component_type, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, timestamp))
-                session.execute(insert_history_query, (timestamp, component_sn, component_location, get_serial_number(component_connected), component_notes, component_image_bytes, "NEW COMPONENT"))
+                session.execute(insert_query, {"a": component_pos, "b": component_type, "c": component_sn, "d": component_location, "e": get_serial_number(component_connected), "f": component_notes, "g": component_image_bytes, "h": timestamp})
+                session.execute(insert_history_query, {"a": timestamp, "b": component_sn, "c": component_location, "d": get_serial_number(component_connected), "e": component_notes, "f": component_image_bytes, "g": "NEW COMPONENT"})
                 session.commit()
             
             
             st.success("New component added successfully!")
 
             # Refresh the data in the app
-            df_devices = fetch_data("DEVICES")
-            df_components = fetch_data("COMPONENTS")
-            df_history = fetch_data("HISTORY")
+            refresh_data()
 
         except sqlite3.Error as e:
             st.sidebar.error(f"Error adding new component: {e}")
@@ -247,21 +245,18 @@ if add_location_submit:
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             # Execute the query
-            insert_query = "INSERT INTO PRESETS (LOCATION, IMAGE) VALUES (?, ?);"
-            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'NEW LOCATION', 'NEW PHOTO', 'CHANGE LOG') VALUES (?, ?, ?, ?);"
+            insert_query = text("INSERT INTO PRESETS (LOCATION, IMAGE) VALUES (:a, :b);")
+            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'NEW LOCATION', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);"
 
             with conn.session as session:
-                session.execute(insert_query, (location_name, location_image_bytes))
-                session.execute(insert_history_query, (timestamp, location_name, location_image_bytes, "NEW LOCATION"))
+                session.execute(insert_query, {"a": location_name, "b": location_image_bytes})
+                session.execute(insert_history_query, {"a": timestamp, "b": location_name, "c": location_image_bytes, "d": "NEW LOCATION"})
                 session.commit()
 
             st.success("New location added successfully!")
 
             # Refresh the data in the app
-            df_devices = fetch_data("DEVICES")
-            df_components = fetch_data("COMPONENTS")
-            df_history = fetch_data("HISTORY")
-            df_presets = fetch_data("PRESETS")
+            refresh_data()
 
         except sqlite3.Error as e:
             st.sidebar.error(f"Error adding new location: {e}")
