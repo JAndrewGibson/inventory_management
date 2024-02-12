@@ -82,6 +82,7 @@ def fetch_data(cursor, table_name):
     result = cursor.execute(query).fetchall()
     return result
 
+@st.cache_resource
 def load_data(table):
     # Connect to SQLite database
     conn = sqlite3.connect(os.path.join(absolute_path,'POSHardware.db'))
@@ -110,9 +111,11 @@ df_presets = load_data("PRESETS")
 st.sidebar.title("Actions")
 
 if st.sidebar.button("Refresh data"):
+    st.cache_resource.clear()
     df_devices = load_data("DEVICES")
     df_components = load_data("COMPONENTS")
     df_history = load_data("HISTORY")
+    df_presets = load_data("PRESETS")
     
 # Download the Excel file
 st.sidebar.download_button(
