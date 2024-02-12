@@ -45,15 +45,9 @@ def download_excel():
     conn = sqlite3.connect(os.path.join(absolute_path, 'POSHardware.db'))
 
     # Read data from the DEVICES table into a DataFrame
-    df_devices = pd.read_sql_query("SELECT * FROM DEVICES;", conn)
-    df_history = pd.read_sql_query("SELECT * FROM HISTORY;", conn)
-    df_components = pd.read_sql_query("SELECT * FROM COMPONENTS;", conn)
-
-    # Exclude the 'IMAGE' column from both DataFrames
-    df_devices = df_devices.drop(columns=['IMAGE'])
-    df_components = df_components.drop(columns=['IMAGE'])
-    df_history = df_history.drop(columns=["PREVIOUS PHOTO","NEW PHOTO"])
-    
+    df_devices = pd.read_sql_query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES;", conn)
+    df_history = pd.read_sql_query("SELECT `CHANGE TIME`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY;", conn)
+    df_components = pd.read_sql_query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS;", conn)
 
     # Convert DataFrames to Excel with two sheets
     excel_data = BytesIO()
@@ -71,7 +65,20 @@ def download_excel():
     return excel_data
 
 def fetch_data(cursor, table_name):
-    query = f"SELECT * FROM {table_name};"
+    if table_name == "DEVICES":
+        print("Fetching device data...")
+        query = f"SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM {table_name};"
+    elif table_name == "COMPONENTS":
+        print("Fetching component data...")
+        query = f"SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM {table_name};"
+    elif table_name == "HISTORY":
+        print("Fetching history data...")
+        query = f"SELECT `CHANGE TIME`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM {table_name};"
+    elif table_name == "PRESETS":
+        print("Fetching presets data...")
+        query = f"SELECT LOCATION FROM {table_name};"
+    else:
+        query = f"SELECT * FROM {table_name};"
     result = cursor.execute(query).fetchall()
     return result
 
@@ -318,8 +325,8 @@ with overview:
     total_components = df_components["S/N"].count()
     wasted_devices = df_devices[df_devices['LOCATION'] == 'E-WASTED']['LOCATION'].count()
     wasted_components = df_components[df_components['LOCATION'] == 'E-WASTED']['LOCATION'].count()
-    devices_without_photo = df_devices['IMAGE'].isnull().sum()
-    components_without_photo = df_components['IMAGE'].isnull().sum()
+    #devices_without_photo = df_devices['IMAGE'].isnull().sum()
+    #components_without_photo = df_components['IMAGE'].isnull().sum()
     stored_assets = df_devices[df_devices['LOCATION'] == 'WAREHOUSE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'WAREHOUSE']['LOCATION'].count()) + (df_devices[df_devices['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count()) + (df_components[df_components['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count())
     unknown_assets = df_devices[df_devices['LOCATION'] == 'UNKNOWN']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'UNKNOWN']['LOCATION'].count())    
     
@@ -327,7 +334,6 @@ with overview:
     # Display the counter
     col1.write(f'''
                Right now there are {total_devices-wasted_devices} active devices and {total_components-wasted_components} components.
-               There are {devices_without_photo} devices and {components_without_photo} components that do not have a photo.
                {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_devices + wasted_components} assets have been sent to E-Waste.
                There has been {changes_last_24_hours} change(s) to the database in the last 24 hours.
                
