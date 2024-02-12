@@ -30,12 +30,12 @@ st.set_page_config(page_title= "HC Hardware",
 - Create new template for Github!'''
                        })
 
-database_file = "POSHardwareNOIMAGE.db" # Edit this to your actual database file
+database_file = "POSHardwareIMAGE.db"
 absolute_path = os.path.dirname(__file__)
 
 def refresh_data():
     st.cache_data.clear()
-    st.rerun()
+    print("Data Refreshed!")
 
 conn = st.connection(name="connection", type="sql", url="sqlite:///" + os.path.join(absolute_path, database_file))
 
@@ -67,25 +67,11 @@ def download_excel():
     return excel_data
 
 def fetch_data(table_name):
-    if table_name == "DEVICES":
-        print("Fetching device data...")
-        query = f"SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM {table_name};"
-    elif table_name == "COMPONENTS":
-        print("Fetching component data...")
-        query = f"SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM {table_name};"
-    elif table_name == "HISTORY":
-        print("Fetching history data...")
-        query = f"SELECT `CHANGE TIME`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM {table_name};"
-    elif table_name == "PRESETS":
-        print("Fetching presets data...")
-        query = f"SELECT LOCATION FROM {table_name};"
-    else:
-        query = f"SELECT * FROM {table_name};"
+    query = f"SELECT * FROM {table_name};"
     result = conn.query(query)
     return result
 
 def get_serial_number(friendly_name):
-    # Assuming df_devices is your DataFrame containing device information
     device_row = df_devices[df_devices['FRIENDLY NAME'] == friendly_name]
     if not device_row.empty:
         return device_row.iloc[0]['S/N']
