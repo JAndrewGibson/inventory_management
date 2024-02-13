@@ -179,7 +179,7 @@ if add_device_submit:
         except sqlite3.Error as e:
             st.sidebar.error(f"Error adding new device: {e}")
     else:
-        st.sidebar.warning("Please fill out all required fields for device entry (S/N, POS, Location and Type).")
+        st.warning("Please fill out all required fields for device entry (S/N, POS, Location and Type).")
 
 if add_component_submit:
     # Validate and process the form data (you can add your logic here)
@@ -214,9 +214,9 @@ if add_component_submit:
             refresh_data()
 
         except sqlite3.Error as e:
-            st.sidebar.error(f"Error adding new component: {e}")
+            st.error(f"Error adding new component: {e}")
     else:
-        st.sidebar.warning("Please fill out all required fields for component entry (S/N, POS, Location and Type).")
+        st.warning("Please fill out all required fields for component entry (S/N, POS, Location and Type).")
 
 if add_location_submit:
     # Validate and process the form data (you can add your logic here)
@@ -247,7 +247,7 @@ if add_location_submit:
         except sqlite3.Error as e:
             st.sidebar.error(f"Error adding new location: {e}")
     else:
-        st.sidebar.warning("Please name your location.")
+        st.warning("Please name your location.")
 
 overview, devices, components, history = st.columns(4)
 
@@ -394,7 +394,7 @@ with devices:
                 except sqlite3.Error as e:
                     st.error(f"Error updating data: {e}")
     else:
-        col1.write("Oops, no devices... Check your search terms or contact Andrew!")
+        col1.write("Oops, no devices... Check your search terms or refresh data!")
             
 with components:
     col1, col2 = st.columns(2)
