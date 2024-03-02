@@ -473,8 +473,6 @@ with components:
                 # Fetch the current values before the update
                 fetch_old_values_query = "SELECT POS, LOCATION, CONNECTED, NOTES, IMAGE FROM COMPONENTS WHERE `S/N` = :a;"
                 old_values = conn.query(fetch_old_values_query, params={"a": selected_component_serial})
-                print(old_values.head())
-                print(old_values.iat[0, 1])
                 
                 # Convert the image to bytes if it's uploaded
                 image_bytes = image_upload.getvalue() if image_upload else old_values.iat[0, 4]
