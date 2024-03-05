@@ -22,12 +22,51 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''# F&B HARDWARE INVENTORY   
-### Version 0.9 
-# Roadmap:
+                       "About":'''### F&B Hardware Inventory v1.0   
+POS Documentation by Andrew Gibson - Last updated: 3/4/23  
+### New features:
+- Both all filtering dropdown boxes are multi-select boxes (finally).
+- All of the database connections are now cached until the refresh button is selected
+- Filtering no longer affects the editing dropdown fields
+- New template for Github (including history and all new changes!)
+- Removed the photos from the history table!
+
+### Roadmap:
 - Ability to use a checkbox to affect changes on the component when changing device.
-- Making the location dropdowns into 'selectbox' attribute type on the component page.
-- Create new template for Github!'''
+- Create new template for Github!
+- After editing components and devices, success box needs to be moved to the top of the page
+- If notes are left blank, they need to return a None-type object
+
+### Previous changes:
+
+##### V0.4 (2/13/24)
+- Caching has now been added!
+  - Hopefully this will speed up the database!
+- Converted to streamlit SQL rather than basic SQLite
+- Image optimization has also been added (needs more work)
+- All warnings now appear at the top of the page.
+  - Previously warnings from the sidebar
+
+##### V0.3 (2/5/24)
+- There is now a history page!
+  - A new history entry is added everytime a change is made to the database
+  - Timestamps are on everything, including a 'last edit' parameter on every device.
+- The ability to download the database as an excel spreadsheet has been added to the sidebar.
+  - History is now included in the download
+- Added a form to add new locations!
+
+
+##### V0.2 (2/2/24)
+- There is now a component page!
+- There are now forms to add components AND devices!
+- Components and devices are now fully seperated and show their connections to eachother!
+- There's a template for the database for anyone else who wants to copy the project.
+- Added photo support (needs compression algorithm for space-saving)
+
+##### V0.1 (1/15/24)
+- Added device page and connected it to a SQL database!
+'''
+
                        })
 
 database_file = "POSHardwareIMAGE.db"
@@ -65,7 +104,7 @@ def download_excel():
     excel_data.seek(0)
 
     return excel_data
-
+@st.cache_data
 def fetch_data(table_name):
     query = f"SELECT * FROM {table_name};"
     result = conn.query(query)
@@ -163,7 +202,6 @@ if add_device_submit:
 
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
             insert_query = text("INSERT INTO DEVICES (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, NOTES, IMAGE, `LAST EDIT`) VALUES (:a, :b, :c, :d, :e, :f, :g, :h);")
             insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g);")
             with conn.session as session:
@@ -232,7 +270,7 @@ if add_location_submit:
 
             # Execute the query
             insert_query = text("INSERT INTO PRESETS (LOCATION, IMAGE) VALUES (:a, :b);")
-            insert_history_query = "INSERT INTO HISTORY ('CHANGE TIME', 'NEW LOCATION', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);"
+            insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW LOCATION', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
 
             with conn.session as session:
                 session.execute(insert_query, {"a": location_name, "b": location_image_bytes})
@@ -292,6 +330,7 @@ with overview:
     POS_data = df_devices.groupby("POS")["S/N"].nunique()
     
     # Display the data in a table
+    col2.subheader("Location Breakdown")
     col2.dataframe(location_data, hide_index=True, use_container_width=True,)
     col1.dataframe(POS_data)
 
@@ -301,7 +340,7 @@ with devices:
    
     locations_list = ['All'] + list(existing_locations)
     selected_locations = col1.multiselect("Select a location", locations_list, default=["All"])
-    type_list = ['All'] + list(df_devices['TYPE'].unique())
+    type_list = ['All'] + list(existing_device_types)
     selected_types = col1.multiselect("Select a type", type_list, default=["All"])
     # Search bar for device lookup
     search_device = col1.text_input("Search for a device", "")
@@ -341,10 +380,10 @@ with devices:
         if not filtered_devices.empty:
             selected_device_index = filtered_devices[filtered_devices['S/N'] == selected_device_serial].index[0]
 
-            # Editable Fields
-            pos_options = filtered_devices['POS'].unique()
+            # Editable Fields            
+            pos_options = df_devices['POS'].unique()
             pos = col2.selectbox("Device POS", pos_options, index=pos_options.tolist().index(filtered_devices.at[selected_device_index, 'POS']))
-            location_options = filtered_devices['LOCATION'].unique()
+            location_options = df_devices['LOCATION'].unique()
             location = col2.selectbox("Device Location", location_options, index=location_options.tolist().index(filtered_devices.at[selected_device_index, 'LOCATION']))
             friendly_name = col2.text_input("Friendly Name", filtered_devices.at[selected_device_index, 'FRIENDLY NAME'])
             notes = col2.text_input("Device Notes", filtered_devices.at[selected_device_index, 'NOTES'])
@@ -366,6 +405,8 @@ with devices:
                 rotated_image = resized_image.rotate(270, expand=True)
                 col2.image(rotated_image, caption="Uploaded Image", width=200)
 
+            save_changes_to_connected = col2.checkbox("Save changes to connected components?", value=False, label_visibility="visible")
+
             if col2.button("Save Device"):
                 try:
                     # Fetch the current values before the update
@@ -383,7 +424,6 @@ with devices:
                     
                     # Update the data in the SQL database
                     update_query = text(f"UPDATE DEVICES SET POS = :a, LOCATION = :b, `FRIENDLY NAME` = :c, NOTES = :d, IMAGE = :e, `LAST EDIT` = :f WHERE `S/N` = :g;")
-                    # Insert the old values into the HISTORY table
                     insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO','CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
                     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     with conn.session as session:
@@ -406,28 +446,35 @@ with components:
     col1.subheader('Components')
    
     locations_list = ['All'] + list(existing_locations)
-    selected_location = col1.selectbox("Select a location", locations_list) #I'd like to move this to a select box soon.
+    selected_location = col1.multiselect("Select a location", locations_list, default=['All'], key="component_location_select")
     type_list = ['All'] + list(df_components['TYPE'].unique())
-    selected_list = col1.selectbox("Select a type", type_list)
-    # Search bar for component lookup
+    selected_list = col1.multiselect("Select a type", type_list, default=['All'], key="component_type_select")
     search_components = col1.text_input("Search for a component", "")
 
     # Filter components based on search input and selected location
-    if selected_location == 'All':
-        filtered_components = df_components
-        if search_components:
-            filtered_components = filtered_components[filtered_components.apply(lambda row: any(row.astype(str).str.contains(search_components, case=False)), axis=1)]
+    if 'All' in selected_locations:
+        filtered_components = df_components  # Show all components for now
+        if 'All' not in selected_types:
+            filtered_components = filtered_components[filtered_components['TYPE'].isin(selected_types)]
     else:
-        filtered_components = df_components[df_components['LOCATION'] == selected_location]
-        if search_components:
-            filtered_components = filtered_components[filtered_components.apply(lambda row: any(row.astype(str).str.contains(search_components, case=False)), axis=1)]
+        filtered_components = df_components[df_components['LOCATION'].isin(selected_locations)]
+
+    # Apply type filtering regardless of location selection (if 'All' types not selected)
+    if 'All' not in selected_types:
+        filtered_components = filtered_components[filtered_components['TYPE'].isin(selected_types)]
+
+    if search_components:
+        filtered_components = filtered_components[filtered_components.apply(lambda row: any(row.astype(str).str.contains(search_components, case=False)), axis=1)]
+
 
     # Display filtered components in a DataFrame
     col1.dataframe(filtered_components, use_container_width=True, hide_index=True, column_order=("POS", "TYPE", "LOCATION", "CONNECTED", "NOTES", "S/N","LAST EDIT"))
       
     col2.subheader('Edit Component')
     # Dropdown to select a component from the filtered list
-    available_components = filtered_components.apply(lambda row: f"{row['TYPE']} at {row['LOCATION']}", axis=1).tolist()
+    available_components = []
+    if not filtered_components.empty:  # Check if DataFrame is not empty
+        available_components = filtered_components.apply(lambda row: f"{row['TYPE']} at {row['LOCATION']}", axis=1).tolist()
     # Create a mapping between display names and serial numbers
     display_name_to_serial = {display_name: serial for display_name, serial in zip(available_components, filtered_components['S/N'].tolist())}
     serial_to_display_name = {serial: display_name for serial, display_name in zip(available_components, filtered_components['S/N'].tolist())}
@@ -443,17 +490,16 @@ with components:
         selected_component_index = filtered_components[filtered_components['S/N'] == selected_component_serial].index[0]
 
         # Add editable fields to the left column
-        pos_options = filtered_components['POS'].unique()
+        pos_options = df_components['POS'].unique()
         pos = col2.selectbox("Component POS", pos_options, index=pos_options.tolist().index(filtered_components.at[selected_component_index, 'POS']))
-        location_options = filtered_components['LOCATION'].unique()
+        location_options = df_components['LOCATION'].unique()
         location = col2.selectbox("Component Location", location_options, index=location_options.tolist().index(filtered_components.at[selected_component_index, 'LOCATION']))
-        connection_options = df_devices['FRIENDLY NAME'].unique()
         
         # Get current component connection
         current_connection_serial = filtered_components.at[selected_component_index, 'CONNECTED']
         current_connection = df_devices[df_devices['S/N'] == current_connection_serial]['FRIENDLY NAME'].iloc[0] if current_connection_serial else None
         connection_options = df_devices['FRIENDLY NAME'].unique()
-        default_connection_index = connection_options.tolist().index(current_connection) if current_connection in connection_options else 0
+        default_connection_index = connection_options.tolist().index(current_connection) if current_connection in connection_options else None
         connection = col2.selectbox("Component Connection", connection_options, index=default_connection_index)
         notes = col2.text_input("Component Notes", filtered_components.at[selected_component_index, 'NOTES'])
         # Display existing image if available
@@ -499,11 +545,12 @@ with components:
 
                 # Refresh the data in the app
                 refresh_data()
+                
 
             except sqlite3.Error as e:
                 st.error(f"Error updating data: {e}")
     else:
-        st.write("Oops, no devices...")
+        st.write("Oops, no devices... Check your search terms or refresh data!")
 
 with history:
     st.subheader('History')
@@ -512,7 +559,7 @@ with history:
     search_history = st.text_input("Search in History", "")
 
     # Fetch data from the HISTORY table
-    history_data_query = "SELECT * FROM HISTORY;"
+    history_data_query = "SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES`, `CHANGE LOG` FROM HISTORY;"
 
     # Fetch all rows from the cursor
     df_history = conn.query(history_data_query)
