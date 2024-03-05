@@ -69,7 +69,7 @@ POS Documentation by Andrew Gibson - Last updated: 3/4/23
 
                        })
 
-database_file = "POSHardwareIMAGE.db"
+database_file = "POSHardware.db"
 absolute_path = os.path.dirname(__file__)
 
 def refresh_data():
