@@ -3,6 +3,7 @@
 
 # unignore what should be tracked
 !.gitignore
+!requirements.txt
 !.gitattributes
 !inventory.py
 !POSHardwareTEMPLATE.db
