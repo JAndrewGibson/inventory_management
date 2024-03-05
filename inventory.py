@@ -261,7 +261,12 @@ with overview:
     df_history['CHANGE TIME'] = pd.to_datetime(df_history['CHANGE TIME'])
     twenty_four_hours_ago = datetime.datetime.now() - datetime.timedelta(hours=24)
     changes_last_24_hours = df_history[df_history['CHANGE TIME'] >= twenty_four_hours_ago].shape[0]
-    col1.write(f"Changes in the last 24 hours: {changes_last_24_hours}")
+    if changes_last_24_hours == 1:
+        changes_sentence = "There has only been one change"
+    elif changes_last_24_hours > 1:
+        changes_sentence = f"There have been {changes_last_24_hours} changes"
+    else:
+        changes_sentence = "There have not been any changes"
     
     # Count the number without a photo
     total_devices = df_devices["S/N"].count()
@@ -272,13 +277,13 @@ with overview:
     #components_without_photo = df_components['IMAGE'].isnull().sum()
     stored_assets = df_devices[df_devices['LOCATION'] == 'WAREHOUSE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'WAREHOUSE']['LOCATION'].count()) + (df_devices[df_devices['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count()) + (df_components[df_components['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count())
     unknown_assets = df_devices[df_devices['LOCATION'] == 'UNKNOWN']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'UNKNOWN']['LOCATION'].count())    
-    
-
-    # Display the counter
+        
+    # Display the paragraph
     col1.write(f'''
+               {changes_sentence} to the database in the last 24 hours.
+               
                Right now there are {total_devices-wasted_devices} active devices and {total_components-wasted_components} components.
                {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_devices + wasted_components} assets have been sent to E-Waste.
-               There has been {changes_last_24_hours} change(s) to the database in the last 24 hours.
                
                Got ideas for what should be displayed on this page? Tell Andrew!
                ''')
