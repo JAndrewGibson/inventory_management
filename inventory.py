@@ -8,6 +8,8 @@ from io import BytesIO
 import pandas as pd
 from PIL import Image
 from sqlalchemy import text
+import exifread
+import tempfile
 
 date = datetime.datetime.now()
 today = date.strftime("%Y-%m-%d")
@@ -32,6 +34,8 @@ POS Documentation by Andrew Gibson - Last updated: 3/4/23
 - Removed the photos from the history table!
 
 ### Roadmap:
+- Re-implement image optimization to compress on upload so that the database doesn't get absolutely killed.
+- Implement QR code system
 - Ability to use a checkbox to affect changes on the component when changing device.
 - Create new template for Github!
 - After editing components and devices, success box needs to be moved to the top of the page
@@ -71,6 +75,7 @@ POS Documentation by Andrew Gibson - Last updated: 3/4/23
 
 database_file = "POSHardware.db"
 absolute_path = os.path.dirname(__file__)
+IMAGES_DIR = "images"  # Path to your images directory
 
 def refresh_data():
     st.cache_data.clear()
@@ -109,6 +114,29 @@ def fetch_data(table_name):
     query = f"SELECT * FROM {table_name};"
     result = conn.query(query)
     return result
+
+IMAGES_DIR = "images"  # Path to your images directory
+
+def store_image(image_data, filename):
+    filepath = os.path.join(IMAGES_DIR, filename)
+    with open(filepath, 'wb') as f:
+        f.write(image_data)
+    return filepath
+
+def fix_image_rotation(image):
+    with open(image, 'rb') as f:
+        tags = exifread.process_file(f, details=False)
+
+    orientation_tag = tags.get('Image Orientation')
+    if orientation_tag:
+        if orientation_tag.values == 3:
+            image = image.rotate(180, expand=True)
+        elif orientation_tag.values == 6:
+            image = image.rotate(270, expand=True)
+        elif orientation_tag.values == 8:
+            image = image.rotate(90, expand=True)
+
+    return image
 
 def get_serial_number(friendly_name):
     device_row = df_devices[df_devices['FRIENDLY NAME'] == friendly_name]
@@ -153,7 +181,7 @@ with st.sidebar.expander("**Add Device**"):
         device_notes = st.text_input("Notes", "None")
 
         # File upload for new device image
-        device_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
+        device_image_upload = st.file_uploader("Upload a photo", type=["jpg", "jpeg", "png"])
 
         # Submit button
         add_device_submit = st.form_submit_button("Add Device")
@@ -169,7 +197,7 @@ with st.sidebar.expander("**Add Component**"):
         component_notes = st.text_input("Notes", "None")
 
         # File upload for new device image
-        component_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
+        component_image_upload = st.file_uploader("Upload a photo", type=["jpg", "jpeg", "png"])
 
         # Submit button
         add_component_submit = st.form_submit_button("Add Component")
@@ -189,16 +217,23 @@ with st.sidebar.expander("**Add Location**"):
 
 # Process the form submission
 if add_device_submit:
-    # Validate and process the form data (you can add your logic here)
+    # Validate and process the form data
     if device_sn and device_pos and device_location and device_type:
         if device_notes == "None" or "":
             device_notes = None
 
         try:
-            # Convert the new image to bytes
-            device_image_bytes = None
             if device_image_upload:
-                device_image_bytes = device_image_upload.read()
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                    image = Image.open(device_image_upload)
+                    image = fix_image_rotation(temp_file.name)
+                    image.save(temp_file.name, format='JPEG', quality=30)
+                    with open(temp_file.name, 'rb') as f:
+                        device_image_bytes = f.read()
+                    os.remove(temp_file.name)
+
+        except Exception as e:
+            st.error(f"Image processing error: {e}") 
 
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -224,10 +259,7 @@ if add_component_submit:
     if component_sn and component_pos and component_location and component_type:
         if component_notes == "None" or "":
             component_notes = None
-        try:
-            # Insert the new component into the COMPONENT table
-            
-            
+        try:            
             # Convert the new image to bytes
             component_image_bytes = None
             if component_image_upload:
@@ -405,7 +437,7 @@ with devices:
                 rotated_image = resized_image.rotate(270, expand=True)
                 col2.image(rotated_image, caption="Uploaded Image", width=200)
 
-            save_changes_to_connected = col2.checkbox("Save changes to connected components?", value=False, label_visibility="visible")
+            save_changes_to_connected = col2.checkbox("Save changes to connected components.", value=False, label_visibility="visible")
 
             if col2.button("Save Device"):
                 try:
