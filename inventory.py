@@ -97,7 +97,7 @@ def download_excel():
     df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES;")
     df_history = conn.query("SELECT `CHANGE TIME`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY;")
     df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS;")
-
+    print("Retreiving Data!")
     # Convert DataFrames to Excel with two sheets
     excel_data = BytesIO()
     with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
@@ -107,36 +107,15 @@ def download_excel():
 
     # Save the Excel data to a BytesIO buffer
     excel_data.seek(0)
-
+    print("Saved Sucessfully!")
     return excel_data
+
 @st.cache_data
 def fetch_data(table_name):
     query = f"SELECT * FROM {table_name};"
     result = conn.query(query)
     return result
 
-IMAGES_DIR = "images"  # Path to your images directory
-
-def store_image(image_data, filename):
-    filepath = os.path.join(IMAGES_DIR, filename)
-    with open(filepath, 'wb') as f:
-        f.write(image_data)
-    return filepath
-
-def fix_image_rotation(image):
-    with open(image, 'rb') as f:
-        tags = exifread.process_file(f, details=False)
-
-    orientation_tag = tags.get('Image Orientation')
-    if orientation_tag:
-        if orientation_tag.values == 3:
-            image = image.rotate(180, expand=True)
-        elif orientation_tag.values == 6:
-            image = image.rotate(270, expand=True)
-        elif orientation_tag.values == 8:
-            image = image.rotate(90, expand=True)
-
-    return image
 
 def get_serial_number(friendly_name):
     device_row = df_devices[df_devices['FRIENDLY NAME'] == friendly_name]
