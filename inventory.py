@@ -226,6 +226,8 @@ if add_device_submit:
             st.success("New device added successfully!")
 
             # Refresh the data in the app
+            print("New Device Added")
+            print("Beginning Data Refresh")
             refresh_data()
 
         except sqlite3.Error as e:
@@ -260,6 +262,8 @@ if add_component_submit:
             st.success("New component added successfully!")
 
             # Refresh the data in the app
+            print("New Component Added")
+            print("Beginning Data Refresh")
             refresh_data()
 
         except sqlite3.Error as e:
@@ -291,6 +295,8 @@ if add_location_submit:
             st.success("New location added successfully!")
 
             # Refresh the data in the app
+            print("New Location Added")
+            print("Beginning Data Refresh")
             refresh_data()
 
         except sqlite3.Error as e:
@@ -389,6 +395,7 @@ with devices:
         
         # Display editable fields
         if not filtered_devices.empty:
+            print("Filtering Devices...")
             selected_device_index = filtered_devices[filtered_devices['S/N'] == selected_device_serial].index[0]
 
             # Editable Fields            
@@ -443,7 +450,7 @@ with devices:
                         session.commit()
                     
                     st.success("Changes saved successfully!")
-
+                    print("Changes saved successfully!")
                     # Refresh the data in the app
                     refresh_data()
 
@@ -498,6 +505,7 @@ with components:
 
     # Display editable fields
     if not filtered_components.empty:
+        print("Filtering Components...")
         selected_component_index = filtered_components[filtered_components['S/N'] == selected_component_serial].index[0]
 
         # Add editable fields to the left column
