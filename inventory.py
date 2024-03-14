@@ -205,7 +205,6 @@ if add_device_submit:
             if device_image_upload:
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
                     image = Image.open(device_image_upload)
-                    image = fix_image_rotation(temp_file.name)
                     image.save(temp_file.name, format='JPEG', quality=30)
                     with open(temp_file.name, 'rb') as f:
                         device_image_bytes = f.read()
