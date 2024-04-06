@@ -221,7 +221,7 @@ if add_device_submit:
                 session.execute(insert_history_query, {"a": timestamp, "b": device_sn, "c": device_location, "d": device_friendly_name, "e": device_notes, "f": device_image_bytes, "g": "NEW DEVICE"})
                 session.commit()
 
-            st.success("New device added successfully!")
+            st.success(f"A new {device_type} ({device_friendly_name}) was added successfully to {device_location}!")
 
             # Refresh the data in the app
             print("New Device Added")
@@ -255,7 +255,7 @@ if add_component_submit:
                 session.execute(insert_history_query, {"a": timestamp, "b": component_sn, "c": component_location, "d": get_serial_number(component_connected), "e": component_notes, "f": component_image_bytes, "g": "NEW COMPONENT"})
                 session.commit()
                         
-            st.success("New component added successfully!")
+            st.success(f"A new {component_type} ({component_sn}) was added successfully to {component_location}!")
 
             # Refresh the data in the app
             print("New Component Added")
@@ -288,7 +288,7 @@ if add_location_submit:
                 session.execute(insert_history_query, {"a": timestamp, "b": location_name, "c": location_image_bytes, "d": "NEW LOCATION"})
                 session.commit()
 
-            st.success("New location added successfully!")
+            st.success(f"{location_name} has been created as a new location!")
 
             # Refresh the data in the app
             print("New Location Added")
