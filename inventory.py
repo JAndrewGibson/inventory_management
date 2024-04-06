@@ -209,9 +209,8 @@ if add_device_submit:
                     with open(temp_file.name, 'rb') as f:
                         device_image_bytes = f.read()
                     os.remove(temp_file.name)
-
-        except Exception as e:
-            st.error(f"Image processing error: {e}") 
+            else:
+                device_image_bytes = None #No image
 
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -235,7 +234,7 @@ if add_device_submit:
         st.warning("Please fill out all required fields for device entry (S/N, POS, Location and Type).")
 
 if add_component_submit:
-    # Validate and process the form data (you can add your logic here)
+    # Validate and process the form data
     if component_sn and component_pos and component_location and component_type:
         if component_notes == "None" or "":
             component_notes = None
@@ -247,7 +246,6 @@ if add_component_submit:
 
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
             insert_query = text("INSERT INTO COMPONENTS (POS, `TYPE`, `S/N`, LOCATION, CONNECTED, NOTES, IMAGE, `LAST EDIT`) VALUES (:a, :b, :c, :d, :e, :f, :g, :h);")
             insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g);")
 
@@ -256,8 +254,7 @@ if add_component_submit:
                 session.execute(insert_query, {"a": component_pos, "b": component_type, "c": component_sn, "d": component_location, "e": get_serial_number(component_connected), "f": component_notes, "g": component_image_bytes, "h": timestamp})
                 session.execute(insert_history_query, {"a": timestamp, "b": component_sn, "c": component_location, "d": get_serial_number(component_connected), "e": component_notes, "f": component_image_bytes, "g": "NEW COMPONENT"})
                 session.commit()
-            
-            
+                        
             st.success("New component added successfully!")
 
             # Refresh the data in the app
@@ -271,7 +268,7 @@ if add_component_submit:
         st.warning("Please fill out all required fields for component entry (S/N, POS, Location and Type).")
 
 if add_location_submit:
-    # Validate and process the form data (you can add your logic here)
+    # Validate and process the form data
     if location_name:
         try:
             # Convert the new image to bytes
@@ -354,10 +351,10 @@ with devices:
     col1, col2 = st.columns(2)
     col1.subheader('Devices')
    
-    locations_list = ['All'] + list(existing_locations)
-    selected_locations = col1.multiselect("Select a location", locations_list, default=["All"])
-    type_list = ['All'] + list(existing_device_types)
-    selected_types = col1.multiselect("Select a type", type_list, default=["All"])
+    device_locations_list = ['All'] + list(existing_locations)
+    selected_locations = col1.multiselect("Select a location", device_locations_list, default=["All"])
+    device_type_list = ['All'] + list(existing_device_types)
+    selected_types = col1.multiselect("Select a type", device_type_list, default=["All"])
     # Search bar for device lookup
     search_device = col1.text_input("Search for a device", "")
 
@@ -462,10 +459,10 @@ with components:
     col1, col2 = st.columns(2)
     col1.subheader('Components')
    
-    locations_list = ['All'] + list(existing_locations)
-    selected_location = col1.multiselect("Select a location", locations_list, default=['All'], key="component_location_select")
-    type_list = ['All'] + list(df_components['TYPE'].unique())
-    selected_list = col1.multiselect("Select a type", type_list, default=['All'], key="component_type_select")
+    component_locations_list = ['All'] + list(existing_locations)
+    selected_location = col1.multiselect("Select a location", component_locations_list, default=['All'], key="component_location_select")
+    component_type_list = ['All'] + list(df_components['TYPE'].unique())
+    selected_list = col1.multiselect("Select a type", component_type_list, default=['All'], key="component_type_select")
     search_components = col1.text_input("Search for a component", "")
 
     # Filter components based on search input and selected location
