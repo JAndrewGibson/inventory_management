@@ -24,14 +24,16 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''### F&B Hardware Inventory v1.0   
-POS Documentation by Andrew Gibson - Last updated: 3/4/23  
+                       "About":'''### [F&B Hardware Inventory v1.0.1](https://github.com/JAndrewGibson/inventory_management)   
+POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson) - Last updated: 4/18/23  
 ### New features:
-- Both all filtering dropdown boxes are multi-select boxes (finally).
+- Fixed Component Selection - it is now independent from the device page entirely
+- Both all filtering dropdown boxes are multi-select boxes (finally)
 - All of the database connections are now cached until the refresh button is selected
 - Filtering no longer affects the editing dropdown fields
 - New template for Github (including history and all new changes!)
-- Removed the photos from the history table!
+- Removed the photos from the history table
+- Added links in the about page as well as the overview and sidebar
 
 ### Roadmap:
 - Re-implement image optimization to compress on upload so that the database doesn't get absolutely killed.
@@ -131,6 +133,7 @@ df_presets = fetch_data("PRESETS")
 
 # Sidebar menu
 st.sidebar.title("Actions")
+
 
 if st.sidebar.button("Refresh data"):
     refresh_data()
@@ -299,6 +302,9 @@ if add_location_submit:
             st.sidebar.error(f"Error adding new location: {e}")
     else:
         st.warning("Please name your location.")
+        
+# Sidebar content
+st.sidebar.markdown("##### [This software was created independently by Andrew Gibson outside of work hours.](https://github.com/JAndrewGibson/inventory_management)")
 
 overview, devices, components, history = st.columns(4)
 
@@ -317,7 +323,7 @@ with overview:
     elif changes_last_24_hours > 1:
         changes_sentence = f"There have been {changes_last_24_hours} changes"
     else:
-        changes_sentence = "There have not been any changes"
+        changes_sentence = "Looking good! There have not been any changes"
     
     # Count the number without a photo
     total_devices = df_devices["S/N"].count()
@@ -336,7 +342,7 @@ with overview:
                Right now there are {total_devices-wasted_devices} active devices and {total_components-wasted_components} components.
                {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_devices + wasted_components} assets have been sent to E-Waste.
                
-               Got ideas for what should be displayed on this page? Tell Andrew!
+               Got ideas for what should be displayed on this page? [Tell Andrew](https://github.com/JAndrewGibson)!
                ''')
     
     location_data = df_devices.groupby("LOCATION")["S/N"].nunique().reset_index()
@@ -352,7 +358,7 @@ with devices:
     col1.subheader('Devices')
    
     device_locations_list = ['All'] + list(existing_locations)
-    selected_locations = col1.multiselect("Select a location", device_locations_list, default=["All"])
+    selected_device_locations = col1.multiselect("Select a location", device_locations_list, default=["All"])
     device_type_list = ['All'] + list(existing_device_types)
     selected_types = col1.multiselect("Select a type", device_type_list, default=["All"])
     # Search bar for device lookup
@@ -360,8 +366,8 @@ with devices:
 
     # Filter devices based on search input and selected location
     filtered_devices = df_devices.copy()
-    if "All" not in selected_locations:
-        filtered_devices = filtered_devices[filtered_devices['LOCATION'].isin(selected_locations)]
+    if "All" not in selected_device_locations:
+        filtered_devices = filtered_devices[filtered_devices['LOCATION'].isin(selected_device_locations)]
     if "All" not in selected_types:
         filtered_devices = filtered_devices[filtered_devices['TYPE'].isin(selected_types)]
     if search_device:
@@ -460,22 +466,22 @@ with components:
     col1.subheader('Components')
    
     component_locations_list = ['All'] + list(existing_locations)
-    selected_location = col1.multiselect("Select a location", component_locations_list, default=['All'], key="component_location_select")
+    selected_component_locations = col1.multiselect("Select a location", component_locations_list, default=['All'], key="component_location_select")
     component_type_list = ['All'] + list(df_components['TYPE'].unique())
     selected_list = col1.multiselect("Select a type", component_type_list, default=['All'], key="component_type_select")
     search_components = col1.text_input("Search for a component", "")
 
     # Filter components based on search input and selected location
-    if 'All' in selected_locations:
+    if 'All' in selected_component_locations:
         filtered_components = df_components  # Show all components for now
-        if 'All' not in selected_types:
-            filtered_components = filtered_components[filtered_components['TYPE'].isin(selected_types)]
+        if 'All' not in selected_list:
+            filtered_components = filtered_components[filtered_components['TYPE'].isin(selected_list)]
     else:
-        filtered_components = df_components[df_components['LOCATION'].isin(selected_locations)]
+        filtered_components = df_components[df_components['LOCATION'].isin(selected_component_locations)]
 
     # Apply type filtering regardless of location selection (if 'All' types not selected)
-    if 'All' not in selected_types:
-        filtered_components = filtered_components[filtered_components['TYPE'].isin(selected_types)]
+    if 'All' not in selected_list:
+        filtered_components = filtered_components[filtered_components['TYPE'].isin(selected_list)]
 
     if search_components:
         filtered_components = filtered_components[filtered_components.apply(lambda row: any(row.astype(str).str.contains(search_components, case=False)), axis=1)]
