@@ -23,13 +23,18 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''### [F&B Hardware Inventory v2.1.0](https://github.com/JAndrewGibson/inventory_management)   
-POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson) - Last updated: 4/19/23
+                       "About":'''### [F&B Hardware Inventory v2.4.3](https://github.com/JAndrewGibson/inventory_management)   
+POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson)
+
+Last updated: 4/19/23
 ### New features:
 - Images fully re-implemented from the ground up
   - All images are now stored in the folder itself for optimization
   - JPG, JPEG and PNG are all supported
   - Implemented exifread to fix mobile phone jank
+  - Implemented new Images tab showing all the images in the database
+- Added Locations tab with image support and metrics about each location
+- Added new reports and seperated reports from actions on the sidebar
 - Database template has been updated to reflect the change
 - Fixed component selection - it is now independent from the device page entirely
 - Added links in the about page as well as the overview and sidebar
@@ -144,26 +149,8 @@ st.markdown("""
     top: -0.5em;
 }
 </style>
-<h1>HC Hardware <span class="title-superscript">v2.1.0</span></h1> 
+<h1>HC Hardware <span class="title-superscript">v2.4.3</span></h1> 
 """, unsafe_allow_html=True)
-
-def download_excel():
-    # Read data from the DEVICES table into a DataFrame
-    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES;")
-    df_history = conn.query("SELECT `CHANGE TIME`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY;")
-    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS;")
-    print("Retreiving Data!")
-    # Convert DataFrames to Excel with two sheets
-    excel_data = BytesIO()
-    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
-        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
-        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
-        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
-
-    # Save the Excel data to a BytesIO buffer
-    excel_data.seek(0)
-    print("Saved Sucessfully!")
-    return excel_data
 
 @st.cache_data
 def fetch_data(table_name):
@@ -191,14 +178,6 @@ st.sidebar.title("Actions")
 
 if st.sidebar.button("Refresh data"):
     refresh_data()
-    
-# Download the Excel file
-st.sidebar.download_button(
-    label="Download as Excel",
-    data=download_excel(),
-    file_name=f"{today} POS Hardware Inventory.xlsx",
-    key="download_excel_button"
-)
 
 existing_locations = list(df_locations['LOCATION'].unique())
 existing_devices = [name for name in df_devices['FRIENDLY NAME'].unique() if name is not None and name.strip() != ""]
@@ -449,12 +428,87 @@ if add_component_type_submit:
     else:
         st.warning("Please enter the type of component you need to record.")
 
+st.sidebar.title("Reports")
+def download_full_report():
+    # Read data from the DEVICES table into a DataFrame
+    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES;")
+    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY;")
+    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS;")
+    print("Retreiving Full Report Data!")
+    # Convert DataFrames to Excel with two sheets
+    excel_data = BytesIO()
+    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
+        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
+        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
+        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
+
+    # Save the Excel data to a BytesIO buffer
+    excel_data.seek(0)
+    return excel_data
+
+def download_ewaste_report():
+    # Read data from the DEVICES table into a DataFrame, filtering for E-WASTED
+    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES WHERE LOCATION = 'E-WASTED';")
+    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY WHERE `PREVIOUS LOCATION` = 'E-WASTED' OR `NEW LOCATION` = 'E-WASTED';")
+    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS WHERE LOCATION = 'E-WASTED';")
+
+    print("Retreiving E-Waste Report Data!")
+    # Convert DataFrames to Excel with two sheets
+    excel_data = BytesIO()
+    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
+        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
+        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
+        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
+        
+    # Save the Excel data to a BytesIO buffer
+    excel_data.seek(0)
+    return excel_data
+
+def download_active_report():
+    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES WHERE LOCATION != 'E-WASTED';")
+    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY WHERE `PREVIOUS LOCATION` != 'E-WASTED' AND `NEW LOCATION` != 'E-WASTED';")
+    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS WHERE LOCATION != 'E-WASTED';")
+
+    print("Retreiving Data!")
+    # Convert DataFrames to Excel with two sheets
+    excel_data = BytesIO()
+    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
+        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
+        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
+        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
+        
+    # Save the Excel data to a BytesIO buffer
+    excel_data.seek(0)
+    return excel_data
+
+st.sidebar.download_button(
+    label="Full Database Download",
+    data=download_full_report(),
+    file_name=f"{today} POS Full Hardware Inventory.xlsx",
+    key="download_full_report"
+)
+
+st.sidebar.download_button(
+    label="E-Wasted Devices",
+    data=download_ewaste_report(),
+    file_name=f"{today} POS E-Waste Report.xlsx",
+    key="download_ewaste_report"
+)
+
+st.sidebar.download_button(
+    label="Active Devices",
+    data=download_active_report(),
+    file_name=f"{today} POS Active Report.xlsx",
+    key="download_active_report"
+)
+
+
 # Sidebar content
 st.sidebar.markdown("##### [This software was created independently by Andrew Gibson outside of work hours.](https://github.com/JAndrewGibson/inventory_management)")
 
-overview, devices, components, history = st.columns(4)
+overview, devices, components, locations, history, images = st.columns(6)
 
-overview, devices, components, history = st.tabs(["Overview", "Devices", "Components", "History"])
+overview, devices, components, locations, history, images = st.tabs(["Overview", "Devices", "Components", "Locations", "History", "Images"])
 
 with overview:
     col1, col2 = st.columns(2)
@@ -476,8 +530,8 @@ with overview:
     total_components = df_components["S/N"].count()
     wasted_devices = df_devices[df_devices['LOCATION'] == 'E-WASTED']['LOCATION'].count()
     wasted_components = df_components[df_components['LOCATION'] == 'E-WASTED']['LOCATION'].count()
-    #devices_without_photo = df_devices['IMAGE'].isnull().sum()
-    #components_without_photo = df_components['IMAGE'].isnull().sum()
+    devices_without_photo = df_devices['IMAGE'].isnull().sum()
+    components_without_photo = df_components['IMAGE'].isnull().sum()
     stored_assets = df_devices[df_devices['LOCATION'] == 'WAREHOUSE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'WAREHOUSE']['LOCATION'].count()) + (df_devices[df_devices['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count()) + (df_components[df_components['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count())
     unknown_assets = df_devices[df_devices['LOCATION'] == 'UNKNOWN']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'UNKNOWN']['LOCATION'].count())    
         
@@ -488,7 +542,11 @@ with overview:
                Right now there are {total_devices-wasted_devices} active devices and {total_components-wasted_components} components.
                {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_devices + wasted_components} assets have been sent to E-Waste.
                
-               Got ideas for what should be displayed on this page? [Tell Andrew](https://github.com/JAndrewGibson)!
+               There are {devices_without_photo} devices without a photo and {components_without_photo} components without a photo.
+               
+               Got ideas for what should be displayed on this page?
+               
+               [Tell Andrew!](https://github.com/JAndrewGibson)
                ''')
     
     location_data = df_devices.groupby("LOCATION")["S/N"].nunique().reset_index()
@@ -551,6 +609,7 @@ with devices:
             pos = col2.selectbox("Device POS", pos_options, index=pos_options.tolist().index(filtered_devices.at[selected_device_index, 'POS']))
             location_options = df_devices['LOCATION'].unique()
             location = col2.selectbox("Device Location", location_options, index=location_options.tolist().index(filtered_devices.at[selected_device_index, 'LOCATION']))
+            save_changes_to_connected = col2.checkbox("Apply location changes to the connected components", value=False, label_visibility="visible")
             friendly_name = col2.text_input("Friendly Name", filtered_devices.at[selected_device_index, 'FRIENDLY NAME'])
             notes = col2.text_input("Device Notes", filtered_devices.at[selected_device_index, 'NOTES'])
             # Display existing image if available
@@ -569,8 +628,6 @@ with devices:
             # File upload for image in the right column
             image_upload = None
             image_upload = col2.file_uploader("Upload a new photo?", type=["jpg", "jpeg", "png"])
-
-            save_changes_to_connected = col2.checkbox("Save changes to connected components.", value=False, label_visibility="visible")
 
             if col2.button("Save Device"):
                 try:
@@ -724,6 +781,53 @@ with components:
     else:
         st.write("Oops, no devices... Check your search terms or refresh data!")
 
+
+
+with locations:
+    st.subheader("Locations")
+    st.markdown("""
+<style>
+    .card {  
+        /* ... your existing styles ... */
+        position: relative; /* Make the container relative for positioning */
+    }
+    .card-image {
+        position: absolute;
+        top: 0; 
+        left: 0;
+        width: 100%;  
+        height: 100%; 
+        opacity: 0.3; /* Adjust opacity for a faded background  */
+        z-index: -1; /* Place the image behind the text */
+    }
+    .card-content {
+        position: relative; /* Ensure content is positioned correctly */
+        z-index: 2; /* Place content above the image */
+    }
+</style>
+""", unsafe_allow_html=True)
+    cols = st.columns(7) # Adjust the number of columns as needed
+
+    for index, row in df_locations.iterrows():
+        location_name = row["LOCATION"]
+        image_filename = row["IMAGE"]
+
+        with cols[index % len(cols)]:
+            with st.container():
+                st.subheader(location_name)
+                if image_filename:
+                    image_path = os.path.join(images_folder, image_filename)
+                    if os.path.exists(image_path):
+                        st.image(image_path, width=200) 
+                # Display Location Stats
+                st.write(f'''
+Devices: {df_devices[df_devices['LOCATION'] == location_name]['LOCATION'].count()}
+
+Components: {df_components[df_components['LOCATION'] == location_name]['LOCATION'].count()}''')
+                st.divider()
+
+
+
 with history:
     st.subheader('History')
 
@@ -747,3 +851,30 @@ with history:
     else:
         # Display all history data
         st.dataframe(df_history, use_container_width=True, hide_index=True, column_order=("CHANGE LOG","DEVICE S/N","PREVIOUS LOCATION","NEW LOCATION","PREVIOUS FRIENDLY NAME","NEW FRIENDLY NAME","PREVIOUS CONNECTION","NEW CONNECTION","PREVIOUS NOTES","NEW NOTES","CHANGE TIME"))
+        
+with images:
+    st.subheader("Images")
+    # Folder path 
+    image_folder = "images"
+
+    # Get a list of all image files
+    image_files = [f for f in os.listdir(image_folder) if f.endswith(('.jpg', '.jpeg', '.png'))]
+
+    # Set the desired number of columns for your grid
+    columns_per_row = 10
+
+    # Display images in a grid
+    for i in range(0, len(image_files), columns_per_row):
+        cols = st.columns(columns_per_row)
+        for j, image_file in enumerate(image_files[i:i+columns_per_row]):
+            image_path = os.path.join(image_folder, image_file)
+            image = Image.open(image_path)
+
+            # Resize the image (optional)
+            width, height = image.size  # Get original dimensions
+            resized_image = image.resize(
+                (int(width * 0.5), int(height * 0.5))  # Scale down by 50%
+            )
+
+            filename = image_file.split('.')[0]  # Split by '.' and take the first part
+            cols[j].image(resized_image, caption=filename)
