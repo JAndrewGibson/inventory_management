@@ -9,7 +9,6 @@ import pandas as pd
 from PIL import Image
 from sqlalchemy import text
 import exifread
-import tempfile
 
 date = datetime.datetime.now()
 today = date.strftime("%Y-%m-%d")
@@ -24,21 +23,24 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''### [F&B Hardware Inventory v2.0.0](https://github.com/JAndrewGibson/inventory_management)   
-POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson) - Last updated: 4/19/23  
+                       "About":'''### [F&B Hardware Inventory v2.1.0](https://github.com/JAndrewGibson/inventory_management)   
+POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson) - Last updated: 4/19/23
 ### New features:
-- Images re-implemented from the ground up!
-- - All images are now stored in the folder itself for optimization and every type of entry can accept an image
-- Database template has been updated to reflect the change!
+- Images fully re-implemented from the ground up
+  - All images are now stored in the folder itself for optimization
+  - JPG, JPEG and PNG are all supported
+  - Implemented exifread to fix mobile phone jank
+- Database template has been updated to reflect the change
 - Fixed component selection - it is now independent from the device page entirely
 - Added links in the about page as well as the overview and sidebar
 
 ### Roadmap:
 - A new page to view all locations and device/component types
-- Remove hardcoded "pos options", which only allows for SpotOn, Tapin2, Toast and Mashgin.
+- Remove hardcoded "pos options", which only allows for SpotOn, Tapin2, Toast and Mashgin
 - Implement QR code system
-- Ability to use a checkbox to affect changes on the component when changing device.
+- Ability to use a checkbox to affect changes on the component when changing device
 - After editing components and devices, success box needs to be moved to the top of the page
+- Ability to have photo history, right now photos overwrite previous photos
 
 ### Previous changes:
 
@@ -51,8 +53,7 @@ POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson) - Las
 - If notes are left blank, they now return a None-type object
 
 ##### V0.4 (2/13/24)
-- Caching has now been added!
-  - Hopefully this will speed up the database!
+- Caching has now been added to speed up the user experience
 - Converted to streamlit SQL rather than basic SQLite
 - Image optimization has also been added (needs more work)
 - All warnings now appear at the top of the page.
@@ -90,11 +91,27 @@ def process_and_save_image(image_upload, sn):
 
     _, original_extension = os.path.splitext(image_upload.name)
     original_extension = original_extension.lower()
-
     image_path = os.path.join(images_folder, f"{sn}.jpg")
 
     try:
-        image = Image.open(image_upload)
+        # Read image bytes into memory for EXIF processing
+        image_bytes = image_upload.getvalue()  
+        with BytesIO(image_bytes) as f:
+            tags = exifread.process_file(f, details=False)
+
+        # Check for EXIF Orientation tag
+        if "Image Orientation" in tags:
+            orientation = tags["Image Orientation"].printable
+            if orientation == "Rotated 90 CW":
+                image = Image.open(BytesIO(image_bytes)).rotate(270, expand=True)
+            elif orientation == "Rotated 180 CW":
+                image = Image.open(BytesIO(image_bytes)).rotate(180)
+            elif orientation == "Rotated 270 CW":
+                image = Image.open(BytesIO(image_bytes)).rotate(90, expand=True)
+            else:  # Other orientations or no orientation tag
+                image = Image.open(BytesIO(image_bytes))
+        else:
+            image = Image.open(BytesIO(image_bytes))
 
         if original_extension not in (".jpg", ".jpeg"):
             image = image.convert('RGB')
@@ -102,7 +119,7 @@ def process_and_save_image(image_upload, sn):
         image.save(image_path, format='JPEG', quality=50)
         return os.path.basename(image_path)
 
-    except OSError as e:
+    except Exception as e:  # Catch any errors
         st.error(f"Error processing image: {e}")
         return None
 
@@ -119,7 +136,16 @@ hide_streamlit_style = """
             """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True) 
 
-st.title("HC Hardware")
+st.markdown("""
+<style>
+.title-superscript {
+    font-size: 50%;
+    position: relative;
+    top: -0.5em;
+}
+</style>
+<h1>HC Hardware <span class="title-superscript">v2.1.0</span></h1> 
+""", unsafe_allow_html=True)
 
 def download_excel():
     # Read data from the DEVICES table into a DataFrame
@@ -535,7 +561,8 @@ with devices:
                     full_image_path = os.path.join(images_folder, existing_image_filename)
 
                     if os.path.exists(full_image_path):
-                        col2.image(full_image_path, width=200) 
+                        with Image.open(full_image_path) as image:
+                            col2.image(image, width=200)
                     else:
                         col2.warning("Image filename found in database but the file itself was not found. It may have been deleted.")
                         
@@ -651,7 +678,8 @@ with components:
                     full_image_path = os.path.join(images_folder, existing_image_filename)
 
                     if os.path.exists(full_image_path):
-                        col2.image(full_image_path, width=200) 
+                        with Image.open(full_image_path) as image:
+                            col2.image(image, width=200) 
                     else:
                         col2.warning("Image filename found in database but the file itself was not found. It may have been deleted.")
                 
