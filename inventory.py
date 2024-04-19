@@ -24,26 +24,31 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''### [F&B Hardware Inventory v1.0.1](https://github.com/JAndrewGibson/inventory_management)   
-POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson) - Last updated: 4/18/23  
+                       "About":'''### [F&B Hardware Inventory v2.0.0](https://github.com/JAndrewGibson/inventory_management)   
+POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson) - Last updated: 4/19/23  
 ### New features:
-- Fixed Component Selection - it is now independent from the device page entirely
+- Images re-implemented from the ground up!
+- - All images are now stored in the folder itself for optimization and every type of entry can accept an image
+- Database template has been updated to reflect the change!
+- Fixed component selection - it is now independent from the device page entirely
+- Added links in the about page as well as the overview and sidebar
+
+### Roadmap:
+- A new page to view all locations and device/component types
+- Remove hardcoded "pos options", which only allows for SpotOn, Tapin2, Toast and Mashgin.
+- Implement QR code system
+- Ability to use a checkbox to affect changes on the component when changing device.
+- After editing components and devices, success box needs to be moved to the top of the page
+
+### Previous changes:
+
+##### V1.0 (3/4/24)
 - Both all filtering dropdown boxes are multi-select boxes (finally)
 - All of the database connections are now cached until the refresh button is selected
 - Filtering no longer affects the editing dropdown fields
 - New template for Github (including history and all new changes!)
 - Removed the photos from the history table
-- Added links in the about page as well as the overview and sidebar
-
-### Roadmap:
-- Re-implement image optimization to compress on upload so that the database doesn't get absolutely killed.
-- Implement QR code system
-- Ability to use a checkbox to affect changes on the component when changing device.
-- Create new template for Github!
-- After editing components and devices, success box needs to be moved to the top of the page
-- If notes are left blank, they need to return a None-type object
-
-### Previous changes:
+- If notes are left blank, they now return a None-type object
 
 ##### V0.4 (2/13/24)
 - Caching has now been added!
@@ -77,7 +82,29 @@ POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson) - Las
 
 database_file = "POSHardware.db"
 absolute_path = os.path.dirname(__file__)
-IMAGES_DIR = "images"  # Path to your images directory
+IMAGES_DIR = "images"
+
+def process_and_save_image(image_upload, sn):
+    images_folder = "images"
+    os.makedirs(images_folder, exist_ok=True)
+
+    _, original_extension = os.path.splitext(image_upload.name)
+    original_extension = original_extension.lower()
+
+    image_path = os.path.join(images_folder, f"{sn}.jpg")
+
+    try:
+        image = Image.open(image_upload)
+
+        if original_extension not in (".jpg", ".jpeg"):
+            image = image.convert('RGB')
+
+        image.save(image_path, format='JPEG', quality=50)
+        return os.path.basename(image_path)
+
+    except OSError as e:
+        st.error(f"Error processing image: {e}")
+        return None
 
 def refresh_data():
     st.cache_data.clear()
@@ -129,11 +156,12 @@ def get_serial_number(friendly_name):
 df_devices = fetch_data("DEVICES").sort_values(by='LAST EDIT', ascending=False)
 df_components = fetch_data("COMPONENTS").sort_values(by='LAST EDIT', ascending=False)
 df_history = fetch_data("HISTORY")
-df_presets = fetch_data("PRESETS")
+df_locations = fetch_data("LOCATIONS")
+df_device_types = fetch_data("DEVICE_TYPES")
+df_component_types = fetch_data("COMPONENT_TYPES")
 
 # Sidebar menu
 st.sidebar.title("Actions")
-
 
 if st.sidebar.button("Refresh data"):
     refresh_data()
@@ -146,10 +174,10 @@ st.sidebar.download_button(
     key="download_excel_button"
 )
 
-existing_locations = list(df_presets['LOCATION'].unique())
-existing_device_types = list(df_devices['TYPE'].unique())
-existing_component_types = list(df_components['TYPE'].unique())
+existing_locations = list(df_locations['LOCATION'].unique())
 existing_devices = [name for name in df_devices['FRIENDLY NAME'].unique() if name is not None and name.strip() != ""]
+existing_device_types = list(df_device_types['DEVICE_TYPE'].unique())
+existing_component_types = list(df_component_types['COMPONENT_TYPE'].unique())
 
 # Form to add a new device
 with st.sidebar.expander("**Add Device**"):
@@ -178,7 +206,7 @@ with st.sidebar.expander("**Add Component**"):
         component_connected = st.selectbox("Connected",[""] + existing_devices)
         component_notes = st.text_input("Notes", "None")
 
-        # File upload for new device image
+        # File upload for new component image
         component_image_upload = st.file_uploader("Upload a photo", type=["jpg", "jpeg", "png"])
 
         # Submit button
@@ -188,7 +216,7 @@ with st.sidebar.expander("**Add Location**"):
     with st.form("Add New Location"):
         location_name = st.text_input("Location Name", "")
 
-        # File upload for new device image
+        # File upload for new location image
         location_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
         
         if location_image_upload:
@@ -196,6 +224,32 @@ with st.sidebar.expander("**Add Location**"):
 
         # Submit button
         add_location_submit = st.form_submit_button("Add Location")
+        
+with st.sidebar.expander("**Add Device Type**"):
+    with st.form("Add New Device Type"):
+        device_type_name = st.text_input("Device Type Name", "")
+
+        # File upload for new device type image
+        device_type_image_upload = st.file_uploader("Upload a photo for the image", type=["jpg", "jpeg", "png"])
+        
+        if device_type_image_upload:
+            st.image(device_type_image_upload)
+
+        # Submit button
+        add_device_type_submit = st.form_submit_button("Add Device Type")
+        
+with st.sidebar.expander("**Add Component Type**"):
+    with st.form("Add New Component Type"):
+        component_type_name = st.text_input("Component Type Name", "")
+
+        # File upload for new component type image
+        component_type_image_upload = st.file_uploader("Upload a photo for the image", type=["jpg", "jpeg", "png"])
+        
+        if component_type_image_upload:
+            st.image(component_type_image_upload)
+
+        # Submit button
+        add_component_type_submit = st.form_submit_button("Add Component Type")
 
 # Process the form submission
 if add_device_submit:
@@ -206,22 +260,17 @@ if add_device_submit:
 
         try:
             if device_image_upload:
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-                    image = Image.open(device_image_upload)
-                    image.save(temp_file.name, format='JPEG', quality=30)
-                    with open(temp_file.name, 'rb') as f:
-                        device_image_bytes = f.read()
-                    os.remove(temp_file.name)
+                device_image_filename = process_and_save_image(device_image_upload, device_sn)
             else:
-                device_image_bytes = None #No image
+                device_image_filename = None
 
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             insert_query = text("INSERT INTO DEVICES (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, NOTES, IMAGE, `LAST EDIT`) VALUES (:a, :b, :c, :d, :e, :f, :g, :h);")
             insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g);")
             with conn.session as session:
-                session.execute(insert_query, {"a": device_sn, "b": device_pos, "c": device_location, "d": device_type, "e": device_friendly_name, "f": device_notes, "g": device_image_bytes, "h": timestamp})
-                session.execute(insert_history_query, {"a": timestamp, "b": device_sn, "c": device_location, "d": device_friendly_name, "e": device_notes, "f": device_image_bytes, "g": "NEW DEVICE"})
+                session.execute(insert_query, {"a": device_sn, "b": device_pos, "c": device_location, "d": device_type, "e": device_friendly_name, "f": device_notes, "g": device_image_filename, "h": timestamp})
+                session.execute(insert_history_query, {"a": timestamp, "b": device_sn, "c": device_location, "d": device_friendly_name, "e": device_notes, "f": device_image_filename, "g": "NEW DEVICE"})
                 session.commit()
 
             st.success(f"A new {device_type} ({device_friendly_name}) was added successfully to {device_location}!")
@@ -241,11 +290,11 @@ if add_component_submit:
     if component_sn and component_pos and component_location and component_type:
         if component_notes == "None" or "":
             component_notes = None
-        try:            
-            # Convert the new image to bytes
-            component_image_bytes = None
+        try:
             if component_image_upload:
-                component_image_bytes = component_image_upload.read()
+                component_image_filename = process_and_save_image(component_image_upload, component_sn)
+            else:
+                component_image_filename = None
 
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -254,8 +303,8 @@ if add_component_submit:
 
             # Execute the query
             with conn.session as session:
-                session.execute(insert_query, {"a": component_pos, "b": component_type, "c": component_sn, "d": component_location, "e": get_serial_number(component_connected), "f": component_notes, "g": component_image_bytes, "h": timestamp})
-                session.execute(insert_history_query, {"a": timestamp, "b": component_sn, "c": component_location, "d": get_serial_number(component_connected), "e": component_notes, "f": component_image_bytes, "g": "NEW COMPONENT"})
+                session.execute(insert_query, {"a": component_pos, "b": component_type, "c": component_sn, "d": component_location, "e": get_serial_number(component_connected), "f": component_notes, "g": component_image_filename, "h": timestamp})
+                session.execute(insert_history_query, {"a": timestamp, "b": component_sn, "c": component_location, "d": get_serial_number(component_connected), "e": component_notes, "f": component_image_filename, "g": "NEW COMPONENT"})
                 session.commit()
                         
             st.success(f"A new {component_type} ({component_sn}) was added successfully to {component_location}!")
@@ -274,21 +323,21 @@ if add_location_submit:
     # Validate and process the form data
     if location_name:
         try:
-            # Convert the new image to bytes
-            location_image_bytes = None
             if location_image_upload:
-                location_image_bytes = Image.open(io.BytesIO(location_image_upload.read()))
+                location_image_filename = process_and_save_image(location_image_upload, location_name)
+            else:
+                location_image_filename = None
 
             # Get the current timestamp
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             # Execute the query
-            insert_query = text("INSERT INTO PRESETS (LOCATION, IMAGE) VALUES (:a, :b);")
+            insert_query = text("INSERT INTO LOCATIONS (LOCATION, IMAGE) VALUES (:a, :b);")
             insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW LOCATION', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
 
             with conn.session as session:
-                session.execute(insert_query, {"a": location_name, "b": location_image_bytes})
-                session.execute(insert_history_query, {"a": timestamp, "b": location_name, "c": location_image_bytes, "d": "NEW LOCATION"})
+                session.execute(insert_query, {"a": location_name, "b": location_image_filename})
+                session.execute(insert_history_query, {"a": timestamp, "b": location_name, "c": location_image_filename, "d": "NEW LOCATION"})
                 session.commit()
 
             st.success(f"{location_name} has been created as a new location!")
@@ -303,6 +352,77 @@ if add_location_submit:
     else:
         st.warning("Please name your location.")
         
+if add_device_type_submit:
+    # Validate and process the form data
+    if device_type_name:
+        try:
+            if device_type_image_upload:
+                device_type_image_filename = process_and_save_image(device_type_image_upload, device_type_name)
+            else:
+                device_type_image_filename = None
+
+            # Get the current timestamp
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Execute the query
+            insert_query = text("INSERT INTO 'DEVICE_TYPES' (DEVICE_TYPE, IMAGE) VALUES (:a, :b);")
+            insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c);")
+            change_log_text = f"NEW DEVICE TYPE: {device_type_name}"
+
+            
+            with conn.session as session:
+                session.execute(insert_query, {"a": device_type_name, "b": device_type_image_filename})
+                session.execute(insert_history_query, {"a": timestamp, "b": device_type_image_filename, "c": change_log_text})
+                session.commit()
+
+            st.success(f"{device_type_name} has been created as a new device type!")
+
+            # Refresh the data in the app
+            print("New Device Type Added!")
+            print("Beginning Data Refresh")
+            refresh_data()
+
+        except sqlite3.Error as e:
+            st.sidebar.error(f"Error adding new device type: {e}")
+    else:
+        st.warning("Please enter the type of device you need to record.")
+        
+if add_component_type_submit:
+    # Validate and process the form data
+    if component_type_name:
+        try:
+            if component_type_image_upload:
+                component_type_image_filename = process_and_save_image(component_type_image_upload, component_type_name)
+            else:
+                component_type_image_filename = None
+
+
+            # Get the current timestamp
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Execute the query
+            insert_query = text("INSERT INTO 'COMPONENT_TYPES' (COMPONENT_TYPE, IMAGE) VALUES (:a, :b);")
+            insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c);")
+            change_log_text = f"NEW COMPONENT TYPE: {component_type_name}"
+
+            
+            with conn.session as session:
+                session.execute(insert_query, {"a": component_type_name, "b": component_type_image_filename})
+                session.execute(insert_history_query, {"a": timestamp, "b": component_type_image_filename, "c": change_log_text})
+                session.commit()
+
+            st.success(f"{component_type_name} has been created as a new component type!")
+
+            # Refresh the data in the app
+            print("New Component Type Added!")
+            print("Beginning Data Refresh")
+            refresh_data()
+
+        except sqlite3.Error as e:
+            st.sidebar.error(f"Error adding new component type: {e}")
+    else:
+        st.warning("Please enter the type of component you need to record.")
+
 # Sidebar content
 st.sidebar.markdown("##### [This software was created independently by Andrew Gibson outside of work hours.](https://github.com/JAndrewGibson/inventory_management)")
 
@@ -409,21 +529,19 @@ with devices:
             notes = col2.text_input("Device Notes", filtered_devices.at[selected_device_index, 'NOTES'])
             # Display existing image if available
             if 'IMAGE' in filtered_devices.columns:
-                existing_image = filtered_devices.at[selected_device_index, 'IMAGE']
-                if existing_image:
-                    col2.image(existing_image, width=200)
+                existing_image_filename = filtered_devices.at[selected_device_index, 'IMAGE']
+                if existing_image_filename:
+                    images_folder = "images" 
+                    full_image_path = os.path.join(images_folder, existing_image_filename)
+
+                    if os.path.exists(full_image_path):
+                        col2.image(full_image_path, width=200) 
+                    else:
+                        col2.warning("Image filename found in database but the file itself was not found. It may have been deleted.")
                         
             # File upload for image in the right column
             image_upload = None
             image_upload = col2.file_uploader("Upload a new photo?", type=["jpg", "jpeg", "png"])
-
-            # Check if an image is uploaded
-            if image_upload:
-                uploaded_image = Image.open(io.BytesIO(image_upload.read()))
-                target_size = (400, 400)
-                resized_image = uploaded_image.resize(target_size)
-                rotated_image = resized_image.rotate(270, expand=True)
-                col2.image(rotated_image, caption="Uploaded Image", width=200)
 
             save_changes_to_connected = col2.checkbox("Save changes to connected components.", value=False, label_visibility="visible")
 
@@ -438,17 +556,18 @@ with devices:
                     if friendly_name == "None":
                         friendly_name = None
                     
-                    # Convert the image to bytes if it's uploaded
-                    image_bytes = image_upload.getvalue() if image_upload else old_values.iat[0, 4]
-                    print("Image bytes before updating database:", image_bytes)
+                    if image_upload:
+                        device_image_filename = process_and_save_image(image_upload, selected_device_serial)
+                    else:
+                        device_image_filename = None
                     
                     # Update the data in the SQL database
                     update_query = text(f"UPDATE DEVICES SET POS = :a, LOCATION = :b, `FRIENDLY NAME` = :c, NOTES = :d, IMAGE = :e, `LAST EDIT` = :f WHERE `S/N` = :g;")
                     insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS FRIENDLY NAME', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO','CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
                     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     with conn.session as session:
-                        session.execute(update_query, {"a": pos, "b": location, "c": friendly_name, "d": notes, "e": image_bytes, "f": timestamp, "g": selected_device_serial})
-                        session.execute(insert_history_query, {"a": timestamp, "b": selected_device_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": friendly_name, "i": notes, "j": image_bytes, "k": "DEVICE UPDATE"})
+                        session.execute(update_query, {"a": pos, "b": location, "c": friendly_name, "d": notes, "e": device_image_filename, "f": timestamp, "g": selected_device_serial})
+                        session.execute(insert_history_query, {"a": timestamp, "b": selected_device_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": friendly_name, "i": notes, "j": device_image_filename, "k": "DEVICE UPDATE"})
                         session.commit()
                     
                     st.success("Changes saved successfully!")
@@ -524,20 +643,21 @@ with components:
         connection = col2.selectbox("Component Connection", connection_options, index=default_connection_index)
         notes = col2.text_input("Component Notes", filtered_components.at[selected_component_index, 'NOTES'])
         # Display existing image if available
+        
         if 'IMAGE' in filtered_components.columns:
-            existing_image = filtered_components.at[selected_component_index, 'IMAGE']
-            if existing_image:
-                col2.image(existing_image, width=200)
+                existing_image_filename = filtered_components.at[selected_component_index, 'IMAGE']
+                if existing_image_filename:
+                    images_folder = "images" 
+                    full_image_path = os.path.join(images_folder, existing_image_filename)
+
+                    if os.path.exists(full_image_path):
+                        col2.image(full_image_path, width=200) 
+                    else:
+                        col2.warning("Image filename found in database but the file itself was not found. It may have been deleted.")
                 
         # File upload for image in the right column
         image_upload = None
         image_upload = col2.file_uploader("Upload a photo?", type=["jpg", "jpeg", "png"])
-
-        # Check if an image is uploaded
-        if image_upload:
-            uploaded_image = Image.open(io.BytesIO(image_upload.read()))
-            col2.image(uploaded_image, width=200)
-
         
         selected_connection_serial = friendly_name_to_serial.get(connection)
         if col2.button("Save Component"):
@@ -547,7 +667,10 @@ with components:
                 old_values = conn.query(fetch_old_values_query, params={"a": selected_component_serial})
                 
                 # Convert the image to bytes if it's uploaded
-                image_bytes = image_upload.getvalue() if image_upload else old_values.iat[0, 4]
+                if image_upload:
+                    component_image_filename = process_and_save_image(image_upload, selected_component_serial)
+                else:
+                    component_image_filename = None
 
                 # Update the data in the SQL database
                 timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -558,8 +681,8 @@ with components:
                  # Insert the old values into the HISTORY table
                 insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
                 with conn.session as session:
-                    session.execute(update_query, {"a": pos, "b": location, "c": selected_connection_serial, "d": notes, "e": image_bytes, "f": timestamp, "g": selected_component_serial})
-                    session.execute(insert_history_query, {"a": timestamp, "b": selected_component_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": selected_connection_serial, "i": notes, "j": image_bytes, "k": "COMPONENT UPDATE"})
+                    session.execute(update_query, {"a": pos, "b": location, "c": selected_connection_serial, "d": notes, "e": component_image_filename, "f": timestamp, "g": selected_component_serial})
+                    session.execute(insert_history_query, {"a": timestamp, "b": selected_component_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": selected_connection_serial, "i": notes, "j": component_image_filename, "k": "COMPONENT UPDATE"})
                     session.commit()
 
                 st.success("Changes saved successfully!")
