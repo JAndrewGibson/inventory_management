@@ -23,7 +23,7 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''### [F&B Hardware Inventory v2.4.3](https://github.com/JAndrewGibson/inventory_management)   
+                       "About":'''### [F&B Hardware Inventory v2.5.1](https://github.com/JAndrewGibson/inventory_management)   
 POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson)
 
 Last updated: 4/19/23
@@ -34,7 +34,9 @@ Last updated: 4/19/23
   - Implemented exifread to fix mobile phone jank
   - Implemented new Images tab showing all the images in the database
 - Added Locations tab with image support and metrics about each location
-- Added new reports and seperated reports from actions on the sidebar
+  - Images are now editable
+  - And re-editable, with special logic to reduce screen bloat once images are added to each location by hiding the uploader in an expander.
+- Added new reports and separated reports from actions on the sidebar
 - Database template has been updated to reflect the change
 - Fixed component selection - it is now independent from the device page entirely
 - Added links in the about page as well as the overview and sidebar
@@ -149,7 +151,7 @@ st.markdown("""
     top: -0.5em;
 }
 </style>
-<h1>HC Hardware <span class="title-superscript">v2.4.3</span></h1> 
+<h1>HC Hardware <span class="title-superscript">v2.5.1</span></h1> 
 """, unsafe_allow_html=True)
 
 @st.cache_data
@@ -781,33 +783,9 @@ with components:
     else:
         st.write("Oops, no devices... Check your search terms or refresh data!")
 
-
-
 with locations:
     st.subheader("Locations")
-    st.markdown("""
-<style>
-    .card {  
-        /* ... your existing styles ... */
-        position: relative; /* Make the container relative for positioning */
-    }
-    .card-image {
-        position: absolute;
-        top: 0; 
-        left: 0;
-        width: 100%;  
-        height: 100%; 
-        opacity: 0.3; /* Adjust opacity for a faded background  */
-        z-index: -1; /* Place the image behind the text */
-    }
-    .card-content {
-        position: relative; /* Ensure content is positioned correctly */
-        z-index: 2; /* Place content above the image */
-    }
-</style>
-""", unsafe_allow_html=True)
-    cols = st.columns(7) # Adjust the number of columns as needed
-
+    cols = st.columns(4) # Adjust the number of columns as needed
     for index, row in df_locations.iterrows():
         location_name = row["LOCATION"]
         image_filename = row["IMAGE"]
@@ -815,16 +793,54 @@ with locations:
         with cols[index % len(cols)]:
             with st.container():
                 st.subheader(location_name)
-                if image_filename:
-                    image_path = os.path.join(images_folder, image_filename)
-                    if os.path.exists(image_path):
-                        st.image(image_path, width=200) 
-                # Display Location Stats
                 st.write(f'''
 Devices: {df_devices[df_devices['LOCATION'] == location_name]['LOCATION'].count()}
 
 Components: {df_components[df_components['LOCATION'] == location_name]['LOCATION'].count()}''')
-                st.divider()
+                
+                if image_filename:
+                    image_path = os.path.join(images_folder, image_filename)
+                    if os.path.exists(image_path):
+                        st.image(image_path, width=200)
+                    else:
+                        st.warning("An image is listed for this location, but no file was found.")
+                    with st.expander(f"Edit {location_name} photo"):
+                        image_upload = st.file_uploader(f"Edit {location_name} photo", type=["jpg", "jpeg", "png"])
+                        if st.button(f"Save {location_name}", f"{location_name}"):
+                            if image_upload:
+                                location_image_filename = process_and_save_image(image_upload, location_name)
+                                # Update the data in the SQL database
+                                notes = f"{location_name} image updated!"
+                                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                update_query = text(f"UPDATE LOCATIONS SET IMAGE = :a WHERE `LOCATION` = :b;")
+                                insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
+                                with conn.session as session:
+                                    session.execute(update_query, {"a": location_image_filename, "b": location_name})
+                                    session.execute(insert_history_query, {"a": timestamp, "b": notes, "c": location_image_filename, "d": "LOCATION UPDATE"})
+                                    session.commit()
+
+                                # Refresh the data in the app
+                                refresh_data()
+                        
+                else:
+                    image_upload = st.file_uploader(f"There's no photo for {location_name}, why don't you add one?", type=["jpg", "jpeg", "png"])
+                    if st.button(f"Save {location_name}", f"{location_name}"):
+                        if image_upload:
+                            location_image_filename = process_and_save_image(image_upload, location_name)
+                            # Update the data in the SQL database
+                            notes = f"{location_name} image updated!"
+                            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            update_query = text(f"UPDATE LOCATIONS SET IMAGE = :a WHERE `LOCATION` = :b;")
+                            insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
+                            with conn.session as session:
+                                session.execute(update_query, {"a": location_image_filename, "b": location_name})
+                                session.execute(insert_history_query, {"a": timestamp, "b": notes, "c": location_image_filename, "d": "LOCATION UPDATE"})
+                                session.commit()
+
+                            # Refresh the data in the app
+                            refresh_data()     
+            st.divider()
+                
 
 
 
