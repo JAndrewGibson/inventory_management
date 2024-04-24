@@ -1,5 +1,5 @@
 #Unfortunately, due to how streamlit works, you must only use single line comments
-#Multiline comments are rendered as markdown
+#Multiline comments are rendered as markdown in the program itself
 
 import streamlit as st
 import os
@@ -26,12 +26,14 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''### [F&B Hardware Inventory v2.8.0](https://github.com/JAndrewGibson/inventory_management)   
+                       "About":'''### [F&B Hardware Inventory v2.8.3](https://github.com/JAndrewGibson/inventory_management)   
 POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson)
 
 Last updated: 4/23/23
 ### New features:
 - Increased image quality to full quality
+- Added functionality for image history
+  - You can only change an image once per day, if you do more than that, it will overwrite.
 - Added a check for duplicate S/N so that it is a caught exception on all assets and asset-types!
 - Changed user feedback
   - If you add an asset that is already there, a notification appears.
@@ -45,14 +47,11 @@ Last updated: 4/23/23
 - Ability to use a checkbox to affect changes on the component when changing device
 - Remove hardcoded "pos options", which only allows for SpotOn, Tapin2, Toast and Mashgin
 - Remove the hardcoded storage locations and add a checkbox to the location creation which defines if it's a storage location or not
-- Ability to have photo history, right now photos overwrite previous photos
-- Implement QR code system (Rethinking if this is necessary...?)
 - Different file formats for reports (right now it's just xlsx, I'd like CSV and a cool PDF summary)
-
 
 ### Previous changes:
 
-##### V2.0 (3/19/24)
+##### V2.0 (4/19/24)
 - Images fully re-implemented from the ground up
   - All images are now stored in the folder itself for optimization
   - JPG, JPEG and PNG are all supported
@@ -120,7 +119,7 @@ st.markdown("""
     top: -0.5em;
 }
 </style>
-<h1>HC Hardware <span class="title-superscript">v2.8.0</span></h1> 
+<h1>HC Hardware <span class="title-superscript">v2.8.3</span></h1> 
 """, unsafe_allow_html=True)
 
 #Setting up my database connections and image folder
@@ -132,11 +131,12 @@ conn = st.connection(name="connection", type="sql", url="sqlite:///" + os.path.j
 #This function is for everytime an image is uploaded or changed, it controls the quality, metedata and format.
 def process_and_save_image(image_upload, sn):
     images_folder = "images"
+    timestamp = str(datetime.datetime.now().strftime('%Y-%m-%d'))
     os.makedirs(images_folder, exist_ok=True)
 
     _, original_extension = os.path.splitext(image_upload.name)
     original_extension = original_extension.lower()
-    image_path = os.path.join(images_folder, f"{sn}.jpg")
+    image_path = os.path.join(images_folder, f"{sn}_{timestamp}.jpg")
 
     try:
         #Read image bytes into memory for EXIF processing
@@ -591,9 +591,7 @@ with overview:
                
                There are {devices_without_photo} devices without a photo and {components_without_photo} components without a photo.
                
-               Got ideas for what should be displayed on this page?
-               
-               [Tell Andrew!](https://github.com/JAndrewGibson)
+               Got ideas for what should be displayed on this page? [Tell Andrew!](https://github.com/JAndrewGibson)
                ''')
     
     
