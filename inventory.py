@@ -6,7 +6,6 @@ import os
 import sqlite3
 import pandas as pd
 import datetime
-import io
 from io import BytesIO
 import pandas as pd
 from PIL import Image
