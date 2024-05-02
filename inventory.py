@@ -195,6 +195,41 @@ df_locations = fetch_data("LOCATIONS")
 df_device_types = fetch_data("DEVICE_TYPES")
 df_component_types = fetch_data("COMPONENT_TYPES")
 
+
+def save_component(image_upload, selected_component_serial, pos, location, notes, component_image_filename, old_values, conn):
+    try:
+        #Fetch the current values before the update
+        fetch_old_values_query = "SELECT POS, LOCATION, CONNECTED, NOTES, IMAGE FROM COMPONENTS WHERE `S/N` = :a;"
+        old_values = conn.query(fetch_old_values_query, params={"a": selected_component_serial})
+        
+        #Convert the image to bytes if it's uploaded
+        if image_upload:
+            component_image_filename = process_and_save_image(image_upload, selected_component_serial)
+        else:
+            component_image_filename = None
+
+        #Update the data in the SQL database
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if notes == "None":
+            notes = None
+        #Update the data in the SQL database
+        update_query = text(f"UPDATE COMPONENTS SET POS = :a, LOCATION = :b, CONNECTED = :c, NOTES = :d, IMAGE = :e, `LAST EDIT` = :f WHERE `S/N` = :g;")
+        #Insert the old values into the HISTORY table
+        insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
+        with conn.session as session:
+            session.execute(update_query, {"a": pos, "b": location, "c": selected_connection_serial, "d": notes, "e": component_image_filename, "f": timestamp, "g": selected_component_serial})
+            session.execute(insert_history_query, {"a": timestamp, "b": selected_component_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": selected_connection_serial, "i": notes, "j": component_image_filename, "k": "COMPONENT UPDATE"})
+            session.commit()
+
+        st.toast(f"Component ({selected_component_serial}) saved successfully!", icon="🙌")
+
+        #Refresh the data in the app
+        refresh_data()
+        
+
+    except sqlite3.Error as e:
+        st.error(f"Error updating data: {e}")
+
 #Sidebar Menu
 #In this section I define all of the existing assets and asset-types so that I can check that we're not adding duplicates
 #Then we have each form and it's corresponding function for updating the database
@@ -546,7 +581,7 @@ st.sidebar.download_button(
 
 
 #I was told by some people to put this here, it's true.
-#Although Ido use this software for work because it makes my job easier, I made it for myself (it was previously just an excel sheet named: "RELATIONAL DATABASE") 🥹 
+#Although I do use this software for work because it makes my job easier, I made it for myself (it was previously just an excel sheet named: "RELATIONAL DATABASE") 🥹 
 st.sidebar.markdown("##### [This software was created independently by Andrew Gibson outside of work hours.](https://github.com/JAndrewGibson/inventory_management)")
 
 #This defines each of my tabs at the top of the screen
@@ -702,6 +737,11 @@ with devices:
                         session.execute(update_query, {"a": pos, "b": location, "c": friendly_name, "d": notes, "e": device_image_filename, "f": timestamp, "g": selected_device_serial})
                         session.execute(insert_history_query, {"a": timestamp, "b": selected_device_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": friendly_name, "i": notes, "j": device_image_filename, "k": "DEVICE UPDATE"})
                         session.commit()
+                    if save_changes_to_connected:
+                        components_to_change = df_components[df_components['CONNECTED'] == selected_device_serial]['S/N']
+                        for component in components_to_change:
+                            print(f"Saving {component}")
+                            save_component(None, component, None, conn)
                     
                     st.toast(f"Device {friendly_name} ({selected_device_serial}) updated successfully!", icon="🥳")
                     print("Changes saved successfully!")
@@ -796,38 +836,7 @@ with components:
         
         selected_connection_serial = friendly_name_to_serial.get(connection)
         if col2.button("Save Component"):
-            try:
-                #Fetch the current values before the update
-                fetch_old_values_query = "SELECT POS, LOCATION, CONNECTED, NOTES, IMAGE FROM COMPONENTS WHERE `S/N` = :a;"
-                old_values = conn.query(fetch_old_values_query, params={"a": selected_component_serial})
-                
-                #Convert the image to bytes if it's uploaded
-                if image_upload:
-                    component_image_filename = process_and_save_image(image_upload, selected_component_serial)
-                else:
-                    component_image_filename = None
-
-                #Update the data in the SQL database
-                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                if notes == "None":
-                    notes = None
-                #Update the data in the SQL database
-                update_query = text(f"UPDATE COMPONENTS SET POS = :a, LOCATION = :b, CONNECTED = :c, NOTES = :d, IMAGE = :e, `LAST EDIT` = :f WHERE `S/N` = :g;")
-                 #Insert the old values into the HISTORY table
-                insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
-                with conn.session as session:
-                    session.execute(update_query, {"a": pos, "b": location, "c": selected_connection_serial, "d": notes, "e": component_image_filename, "f": timestamp, "g": selected_component_serial})
-                    session.execute(insert_history_query, {"a": timestamp, "b": selected_component_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": selected_connection_serial, "i": notes, "j": component_image_filename, "k": "COMPONENT UPDATE"})
-                    session.commit()
-
-                st.toast(f"Component ({selected_component_serial}) saved successfully!", icon="🙌")
-
-                #Refresh the data in the app
-                refresh_data()
-                
-
-            except sqlite3.Error as e:
-                st.error(f"Error updating data: {e}")
+            save_component(image_upload, selected_component_serial, pos, location, notes, component_image_filename, old_values, conn)
     else:
         st.write("Oops, no devices... Check your search terms or refresh data!")
 
