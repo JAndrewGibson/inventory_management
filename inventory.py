@@ -635,8 +635,8 @@ with overview:
     col2.subheader("Location Breakdown")
     location_data = df_devices.groupby("LOCATION")["S/N"].nunique().reset_index()
     POS_data = df_devices.groupby("POS")["S/N"].nunique()
-    col2.dataframe(location_data, hide_index=True, use_container_width=True,)
-    col1.dataframe(POS_data)
+    col2.dataframe(location_data, hide_index=True, use_container_width=True, column_config={"S/N": st.column_config.TitleColumn("Devices")})
+    col1.dataframe(POS_data, column_config={"S/N": st.column_config.TitleColumn("Devices")})
 
 with devices:
     #Two columns for this page as well!
@@ -710,8 +710,8 @@ with devices:
                         col2.warning("Image filename found in database but the file itself was not found. It may have been deleted.")
                         
             #File upload for image in the right column
-            image_upload = None
-            image_upload = col2.file_uploader("Upload a new photo?", type=["jpg", "jpeg", "png"])
+            device_image_upload = None
+            device_image_upload = col2.file_uploader("Upload a new photo?", type=["jpg", "jpeg", "png"])
 
             if col2.button("Save Device"):
                 try:
@@ -724,8 +724,8 @@ with devices:
                     if friendly_name == "None":
                         friendly_name = None
                     
-                    if image_upload:
-                        device_image_filename = process_and_save_image(image_upload, selected_device_serial)
+                    if device_image_upload:
+                        device_image_filename = process_and_save_image(device_image_upload, selected_device_serial)
                     else:
                         device_image_filename = None
                     
@@ -831,12 +831,12 @@ with components:
                         col2.warning("Image filename found in database but the file itself was not found. It may have been deleted.")
                 
         #File upload for image in the right column
-        image_upload = None
-        image_upload = col2.file_uploader("Upload a photo?", type=["jpg", "jpeg", "png"])
+        component_image_upload = None
+        component_image_upload = col2.file_uploader("Upload a photo?", type=["jpg", "jpeg", "png"])
         
         selected_connection_serial = friendly_name_to_serial.get(connection)
         if col2.button("Save Component"):
-            save_component(image_upload, selected_component_serial, pos, location, notes, component_image_filename, old_values, conn)
+            save_component(component_image_upload, selected_component_serial, pos, location, notes, component_image_filename, old_values, conn)
     else:
         st.write("Oops, no devices... Check your search terms or refresh data!")
 
@@ -862,10 +862,10 @@ Components: {df_components[df_components['LOCATION'] == location_name]['LOCATION
                     else:
                         st.warning("An image is listed for this location, but no file was found.")
                     with st.expander(f"Edit {location_name} photo"):
-                        image_upload = st.file_uploader(f"Edit {location_name} photo", type=["jpg", "jpeg", "png"])
+                        location_image_upload = st.file_uploader(f"Edit {location_name} photo", type=["jpg", "jpeg", "png"])
                         if st.button(f"Save {location_name}", f"{location_name}"):
-                            if image_upload:
-                                location_image_filename = process_and_save_image(image_upload, location_name)
+                            if location_image_upload:
+                                location_image_filename = process_and_save_image(location_image_upload, location_name)
                                 #Update the data in the SQL database
                                 notes = f"{location_name} image updated!"
                                 timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -880,10 +880,10 @@ Components: {df_components[df_components['LOCATION'] == location_name]['LOCATION
                                 refresh_data()
                         
                 else:
-                    image_upload = st.file_uploader(f"There's no photo for {location_name}, why don't you add one?", type=["jpg", "jpeg", "png"])
+                    location_image_upload = st.file_uploader(f"There's no photo for {location_name}, why don't you add one?", type=["jpg", "jpeg", "png"])
                     if st.button(f"Save {location_name}", f"{location_name}"):
-                        if image_upload:
-                            location_image_filename = process_and_save_image(image_upload, location_name)
+                        if location_image_upload:
+                            location_image_filename = process_and_save_image(location_image_upload, location_name)
                             #Update the data in the SQL database
                             notes = f"{location_name} image updated!"
                             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
