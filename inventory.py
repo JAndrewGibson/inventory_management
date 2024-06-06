@@ -26,11 +26,12 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''### [F&B Hardware Inventory v2.8.3](https://github.com/JAndrewGibson/inventory_management)   
+                       "About":'''### [F&B Hardware Inventory v2.8.4](https://github.com/JAndrewGibson/inventory_management)   
 POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson)
 
-Last updated: 4/23/23
+Last updated: 6/6/23
 ### New features:
+- Fixed bug when reassigning a device or component to a location that currently does not have any devices.
 - Increased image quality to full quality
 - Added functionality for image history
   - You can only change an image once per day, if you do more than that, it will overwrite.
@@ -119,13 +120,12 @@ st.markdown("""
     top: -0.5em;
 }
 </style>
-<h1>HC Hardware <span class="title-superscript">v2.8.3</span></h1> 
+<h1>HC Hardware <span class="title-superscript">v2.8.4</span></h1> 
 """, unsafe_allow_html=True)
 
 #Setting up my database connections and image folder
 database_file = "POSHardware.db"
 absolute_path = os.path.dirname(__file__)
-IMAGES_DIR = "images"
 conn = st.connection(name="connection", type="sql", url="sqlite:///" + os.path.join(absolute_path, database_file))
 
 #This function is for everytime an image is uploaded or changed, it controls the quality, metedata and format.
@@ -635,8 +635,8 @@ with overview:
     col2.subheader("Location Breakdown")
     location_data = df_devices.groupby("LOCATION")["S/N"].nunique().reset_index()
     POS_data = df_devices.groupby("POS")["S/N"].nunique()
-    col2.dataframe(location_data, hide_index=True, use_container_width=True, column_config={"S/N": st.column_config.TitleColumn("Devices")})
-    col1.dataframe(POS_data, column_config={"S/N": st.column_config.TitleColumn("Devices")})
+    col2.dataframe(location_data, hide_index=True, use_container_width=True)
+    col1.dataframe(POS_data)
 
 with devices:
     #Two columns for this page as well!
@@ -691,7 +691,7 @@ with devices:
             #Editable Fields            
             pos_options = df_devices['POS'].unique()
             pos = col2.selectbox("Device POS", pos_options, index=pos_options.tolist().index(filtered_devices.at[selected_device_index, 'POS']))
-            location_options = df_devices['LOCATION'].unique()
+            location_options = df_locations['LOCATION'].unique()
             location = col2.selectbox("Device Location", location_options, index=location_options.tolist().index(filtered_devices.at[selected_device_index, 'LOCATION']))
             save_changes_to_connected = col2.checkbox("Apply location changes to the connected components", value=False, label_visibility="visible")
             friendly_name = col2.text_input("Friendly Name", filtered_devices.at[selected_device_index, 'FRIENDLY NAME'])
@@ -806,13 +806,13 @@ with components:
         #Add editable fields to the left column
         pos_options = df_components['POS'].unique()
         pos = col2.selectbox("Component POS", pos_options, index=pos_options.tolist().index(filtered_components.at[selected_component_index, 'POS']))
-        location_options = df_components['LOCATION'].unique()
+        location_options = df_locations['LOCATION'].unique()
         location = col2.selectbox("Component Location", location_options, index=location_options.tolist().index(filtered_components.at[selected_component_index, 'LOCATION']))
         
         #Get current component connection
         current_connection_serial = filtered_components.at[selected_component_index, 'CONNECTED']
         current_connection = df_devices[df_devices['S/N'] == current_connection_serial]['FRIENDLY NAME'].iloc[0] if current_connection_serial else None
-        connection_options = df_devices['FRIENDLY NAME'].unique()
+        connection_options = list("" + df_devices['FRIENDLY NAME'].unique())
         default_connection_index = connection_options.tolist().index(current_connection) if current_connection in connection_options else None
         connection = col2.selectbox("Component Connection", connection_options, index=default_connection_index)
         notes = col2.text_input("Component Notes", filtered_components.at[selected_component_index, 'NOTES'])
@@ -831,12 +831,43 @@ with components:
                         col2.warning("Image filename found in database but the file itself was not found. It may have been deleted.")
                 
         #File upload for image in the right column
-        component_image_upload = None
-        component_image_upload = col2.file_uploader("Upload a photo?", type=["jpg", "jpeg", "png"])
+        image_upload = None
+        image_upload = col2.file_uploader("Upload a photo?", type=["jpg", "jpeg", "png"])
         
         selected_connection_serial = friendly_name_to_serial.get(connection)
         if col2.button("Save Component"):
-            save_component(component_image_upload, selected_component_serial, pos, location, notes, component_image_filename, old_values, conn)
+            try:
+                #Fetch the current values before the update
+                fetch_old_values_query = "SELECT POS, LOCATION, CONNECTED, NOTES, IMAGE FROM COMPONENTS WHERE `S/N` = :a;"
+                old_values = conn.query(fetch_old_values_query, params={"a": selected_component_serial})
+                
+                #Convert the image to bytes if it's uploaded
+                if image_upload:
+                    component_image_filename = process_and_save_image(image_upload, selected_component_serial)
+                else:
+                    component_image_filename = None
+
+                #Update the data in the SQL database
+                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                if notes == "None":
+                    notes = None
+                #Update the data in the SQL database
+                update_query = text(f"UPDATE COMPONENTS SET POS = :a, LOCATION = :b, CONNECTED = :c, NOTES = :d, IMAGE = :e, `LAST EDIT` = :f WHERE `S/N` = :g;")
+                 #Insert the old values into the HISTORY table
+                insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
+                with conn.session as session:
+                    session.execute(update_query, {"a": pos, "b": location, "c": selected_connection_serial, "d": notes, "e": component_image_filename, "f": timestamp, "g": selected_component_serial})
+                    session.execute(insert_history_query, {"a": timestamp, "b": selected_component_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": selected_connection_serial, "i": notes, "j": component_image_filename, "k": "COMPONENT UPDATE"})
+                    session.commit()
+
+                st.toast(f"Component ({selected_component_serial}) saved successfully!", icon="🙌")
+
+                #Refresh the data in the app
+                refresh_data()
+                
+
+            except sqlite3.Error as e:
+                st.error(f"Error updating data: {e}")
     else:
         st.write("Oops, no devices... Check your search terms or refresh data!")
 
@@ -856,6 +887,7 @@ Devices: {df_devices[df_devices['LOCATION'] == location_name]['LOCATION'].count(
 Components: {df_components[df_components['LOCATION'] == location_name]['LOCATION'].count()}''')
                 
                 if image_filename:
+                    images_folder = "images" 
                     image_path = os.path.join(images_folder, image_filename)
                     if os.path.exists(image_path):
                         st.image(image_path, width=200)
