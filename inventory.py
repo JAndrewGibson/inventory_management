@@ -50,6 +50,13 @@ Last updated: 6/8/23
 - Changed almost every comment for the entire code - MORE READABILITY 😎
 
 ### Roadmap:
+- Bulk add/import - for accepting shipments of new devices
+- Download all photos
+- Add a portion to the overview screen which will flag any potential issues
+- - Photo in database but not in images folder
+- - Device and it's components not in the same location
+- - Devices that have been more than 6 months without an update
+- - Assets without edit history (Devices that were input directly in the database)
 - Rework photos and photo history - right now I think it's slowing down the app.
 - Remove hardcoded "pos options", which only allows for SpotOn, Tapin2, Toast and Mashgin
 - Remove the hardcoded storage locations and add a checkbox to the location creation which defines if it's a storage location or not
@@ -125,7 +132,7 @@ st.markdown("""
     top: -0.5em;
 }
 </style>
-<h1>HC Hardware <span class="title-superscript">v2.8.4</span></h1> 
+<h1>HC Hardware <span class="title-superscript">v2.9.0</span></h1> 
 """, unsafe_allow_html=True)
 
 #Setting up my database connections and image folder
