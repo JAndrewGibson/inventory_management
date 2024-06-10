@@ -11,7 +11,8 @@ import pandas as pd
 from PIL import Image
 from sqlalchemy import text
 import exifread
-import time
+import zipfile
+
 
 date = datetime.datetime.now()
 today = date.strftime("%Y-%m-%d")
@@ -50,6 +51,7 @@ Last updated: 6/8/23
 - Changed almost every comment for the entire code - MORE READABILITY 😎
 
 ### Roadmap:
+- Change "Apply Location Changes to Selected Components" logic so that components are only updated when there is a legitimate change to location.
 - Bulk add/import - for accepting shipments of new devices
 - Download all photos
 - Add a portion to the overview screen which will flag any potential issues
