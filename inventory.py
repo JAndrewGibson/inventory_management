@@ -1,6 +1,10 @@
 #Unfortunately, due to how streamlit works, you must only use single line comments
 #Multiline comments are rendered as markdown in the program itself
 
+# To do before launch:
+# Change all image columns from BLOB format to text
+# Add IS_STORAGE to locations table in db
+
 import streamlit as st
 import os
 import sqlite3
@@ -11,7 +15,7 @@ import pandas as pd
 from PIL import Image
 from sqlalchemy import text
 import exifread
-import zipfile
+from zipfile import ZipFile
 
 
 date = datetime.datetime.now()
@@ -28,11 +32,35 @@ st.set_page_config(page_title= "HC Hardware",
                    menu_items={
                        'Get Help':None,
                        'Report a Bug':None,
-                       "About":'''### [F&B Hardware Inventory v2.9.0](https://github.com/JAndrewGibson/inventory_management)   
+                       "About":'''### [F&B Hardware Inventory v3.0.0](https://github.com/JAndrewGibson/inventory_management)   
 POS tracking software by [Andrew Gibson](https://github.com/JAndrewGibson)
 
-Last updated: 6/8/23
+Last updated: 6/10/23
 ### New features:
+- Change "Apply Location Changes to Selected Components" logic so that components are only updated when there is a legitimate change to location.
+- - Implement logic to check if a location is a storage location for the overview screen
+- - Implement a way to change whether a location is a storage location from the "Locations" tab.
+- Remove the hardcoded storage locations and add a checkbox to the location creation which defines if it's a storage location or not
+- Button to download all photos
+- - Remove images tab
+
+
+### Roadmap:
+- A better way to deal with e-wasted devices. Have them be removed from the active device table, but also be able to un-archive them incase someone makes a mistake. I might have to remove the "e-waste" name and call it "archive".
+- Bulk add/import - for accepting shipments of new devices
+- Reworked overview screen
+- - Add graphs showing distribution of POS type 
+- - Add a button to the overview screen which will flag any potential issues
+- - - Photo in database but not in images folder
+- - - Device and it's components not in the same location
+- - - Devices that have been more than 6 months without an update
+- - - Assets without edit history (Devices that were input directly in the database)
+- Remove hardcoded "pos options", which only allows for SpotOn, Tapin2, Toast and Mashgin
+
+
+### Previous changes:
+
+##### V3.0 (6/10/24)
 - Finally implemented "Apply Location Changes to Selected Components"
 - Changed how components and devices are identified in the dropdown boxes, including parentheses with their serial number. 
 - Added functionality to break component connection
@@ -49,22 +77,6 @@ Last updated: 6/8/23
   - When an exception is caught, a yellow warning box appears at the top.
   - When there is an error, a red box appears at the top.
 - Changed almost every comment for the entire code - MORE READABILITY 😎
-
-### Roadmap:
-- Change "Apply Location Changes to Selected Components" logic so that components are only updated when there is a legitimate change to location.
-- Bulk add/import - for accepting shipments of new devices
-- Download all photos
-- Add a portion to the overview screen which will flag any potential issues
-- - Photo in database but not in images folder
-- - Device and it's components not in the same location
-- - Devices that have been more than 6 months without an update
-- - Assets without edit history (Devices that were input directly in the database)
-- Rework photos and photo history - right now I think it's slowing down the app.
-- Remove hardcoded "pos options", which only allows for SpotOn, Tapin2, Toast and Mashgin
-- Remove the hardcoded storage locations and add a checkbox to the location creation which defines if it's a storage location or not
-- Different file formats for reports (right now it's just xlsx, I'd like CSV and a cool PDF summary)
-
-### Previous changes:
 
 ##### V2.0 (4/19/24)
 - Images fully re-implemented from the ground up
@@ -141,6 +153,7 @@ st.markdown("""
 database_file = "POSHardware.db"
 absolute_path = os.path.dirname(__file__)
 conn = st.connection(name="connection", type="sql", url="sqlite:///" + os.path.join(absolute_path, database_file))
+images_path = os.path.join(absolute_path, "images")
 
 #This function is for everytime an image is uploaded or changed, it controls the quality, metedata and format.
 def process_and_save_image(image_upload, sn):
@@ -235,7 +248,7 @@ with st.sidebar.expander("**Add Device**"):
         device_location = st.selectbox("Location", [""] + existing_locations)
         device_type = st.selectbox("Type", [""] + existing_device_types)
         device_friendly_name = st.text_input("Friendly Name", "")
-        device_notes = st.text_input("Notes", "None")
+        add_device_notes = st.text_input("Notes", "None")
 
         #File upload for new device image
         device_image_upload = st.file_uploader("Upload a photo", type=["jpg", "jpeg", "png"])
@@ -251,7 +264,7 @@ with st.sidebar.expander("**Add Component**"):
         component_location = st.selectbox("Location", [""] + existing_locations)
         component_type = st.selectbox("Type", [""] + existing_component_types)
         component_connected = st.selectbox("Connected",[""] + existing_devices)
-        component_notes = st.text_input("Notes", "None")
+        add_component_notes = st.text_input("Notes", "None")
 
         #File upload for new component image
         component_image_upload = st.file_uploader("Upload a photo", type=["jpg", "jpeg", "png"])
@@ -262,6 +275,7 @@ with st.sidebar.expander("**Add Component**"):
 with st.sidebar.expander("**Add Location**"):
     with st.form("Add New Location"):
         location_name = st.text_input("Location Name", "")
+        storage_check = st.checkbox("Storage location?", value= False)
 
         #File upload for new location image
         location_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
@@ -302,8 +316,8 @@ with st.sidebar.expander("**Add Component Type**"):
 if add_device_submit:
     #Validate and process the form data
     if device_sn and device_pos and device_location and device_type and not (device_sn in existing_device_sn):
-        if device_notes == "None" or "":
-            device_notes = None
+        if add_device_notes == "None" or "":
+            add_device_notes = None
 
         try:
             if device_image_upload:
@@ -316,8 +330,8 @@ if add_device_submit:
             insert_query = text("INSERT INTO DEVICES (`S/N`, POS, LOCATION, `TYPE`, `FRIENDLY NAME`, NOTES, IMAGE, `LAST EDIT`) VALUES (:a, :b, :c, :d, :e, :f, :g, :h);")
             insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'NEW LOCATION', 'NEW FRIENDLY NAME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g);")
             with conn.session as session:
-                session.execute(insert_query, {"a": device_sn, "b": device_pos, "c": device_location, "d": device_type, "e": device_friendly_name, "f": device_notes, "g": device_image_filename, "h": timestamp})
-                session.execute(insert_history_query, {"a": timestamp, "b": device_sn, "c": device_location, "d": device_friendly_name, "e": device_notes, "f": device_image_filename, "g": "NEW DEVICE"})
+                session.execute(insert_query, {"a": device_sn, "b": device_pos, "c": device_location, "d": device_type, "e": device_friendly_name, "f": add_device_notes, "g": device_image_filename, "h": timestamp})
+                session.execute(insert_history_query, {"a": timestamp, "b": device_sn, "c": device_location, "d": device_friendly_name, "e": add_device_notes, "f": device_image_filename, "g": "NEW DEVICE"})
                 session.commit()
             st.success(f"A new {device_type} ({device_friendly_name}) was added successfully to {device_location}!")
             refresh_data()
@@ -334,8 +348,8 @@ if add_device_submit:
 if add_component_submit:
     #Validate and process the form data
     if component_sn and component_pos and component_location and component_type and not (component_sn in existing_component_sn):
-        if component_notes == "None" or "":
-            component_notes = None
+        if add_component_notes == "None" or "":
+            add_component_notes = None
         try:
             if component_image_upload:
                 component_image_filename = process_and_save_image(component_image_upload, component_sn)
@@ -349,8 +363,8 @@ if add_component_submit:
 
             #Execute the query
             with conn.session as session:
-                session.execute(insert_query, {"a": component_pos, "b": component_type, "c": component_sn, "d": component_location, "e": get_serial_number(component_connected), "f": component_notes, "g": component_image_filename, "h": timestamp})
-                session.execute(insert_history_query, {"a": timestamp, "b": component_sn, "c": component_location, "d": get_serial_number(component_connected), "e": component_notes, "f": component_image_filename, "g": "NEW COMPONENT"})
+                session.execute(insert_query, {"a": component_pos, "b": component_type, "c": component_sn, "d": component_location, "e": get_serial_number(component_connected), "f": add_component_notes, "g": component_image_filename, "h": timestamp})
+                session.execute(insert_history_query, {"a": timestamp, "b": component_sn, "c": component_location, "d": get_serial_number(component_connected), "e": add_component_notes, "f": component_image_filename, "g": "NEW COMPONENT"})
                 session.commit()
                         
             st.success(f"A new {component_type} ({component_sn}) was added successfully to {component_location}!")
@@ -381,13 +395,17 @@ if add_location_submit:
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             #Execute the query
-            insert_query = text("INSERT INTO LOCATIONS (LOCATION, IMAGE) VALUES (:a, :b);")
+            insert_query = text("INSERT INTO LOCATIONS (LOCATION, IMAGE, IS_STORAGE) VALUES (:a, :b, :c);")
             insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW LOCATION', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
 
             with conn.session as session:
-                session.execute(insert_query, {"a": location_name, "b": location_image_filename})
-                session.execute(insert_history_query, {"a": timestamp, "b": location_name, "c": location_image_filename, "d": "NEW LOCATION"})
-                session.commit()
+                session.execute(insert_query, {"a": location_name, "b": location_image_filename, "c": storage_check})
+                if storage_check == False:  
+                    session.execute(insert_history_query, {"a": timestamp, "b": location_name, "c": location_image_filename, "d": "NEW LOCATION"})
+                    session.commit()
+                else:
+                    session.execute(insert_history_query, {"a": timestamp, "b": location_name, "c": location_image_filename, "d": "NEW STORAGE LOCATION"})
+                    session.commit()
 
             st.success(f"{location_name} has been created as a new location!")
 
@@ -478,82 +496,6 @@ if add_component_type_submit:
     else:
         st.warning("Please enter the type of component you need to record.")
 
-#The reporting part of the sidebar
-#Each function for the download and it's button
-#This may be moved to another tab later if necessary (if I add more features)
-st.sidebar.title("Reports")
-def download_full_report():
-    #Read data from the DEVICES table into a DataFrame
-    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES;")
-    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY;")
-    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS;")
-    print("Retreiving Full Report Data!")
-    #Convert DataFrames to Excel with two sheets
-    excel_data = BytesIO()
-    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
-        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
-        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
-        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
-
-    #Save the Excel data to a BytesIO buffer
-    excel_data.seek(0)
-    return excel_data
-
-st.sidebar.download_button(
-    label="Full Database Download",
-    data=download_full_report(),
-    file_name=f"{today} POS Full Hardware Inventory.xlsx",
-    key="download_full_report"
-)
-
-def download_ewaste_report():
-    #Read data from the DEVICES table into a DataFrame, filtering for E-WASTED
-    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES WHERE LOCATION = 'E-WASTED';")
-    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY WHERE `PREVIOUS LOCATION` = 'E-WASTED' OR `NEW LOCATION` = 'E-WASTED';")
-    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS WHERE LOCATION = 'E-WASTED';")
-
-    print("Retreiving E-Waste Report Data!")
-    #Convert DataFrames to Excel with two sheets
-    excel_data = BytesIO()
-    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
-        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
-        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
-        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
-        
-    #Save the Excel data to a BytesIO buffer
-    excel_data.seek(0)
-    return excel_data
-
-st.sidebar.download_button(
-    label="E-Wasted Devices",
-    data=download_ewaste_report(),
-    file_name=f"{today} POS E-Waste Report.xlsx",
-    key="download_ewaste_report"
-)
-
-def download_active_report():
-    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES WHERE LOCATION != 'E-WASTED';")
-    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY WHERE `PREVIOUS LOCATION` != 'E-WASTED' AND `NEW LOCATION` != 'E-WASTED';")
-    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS WHERE LOCATION != 'E-WASTED';")
-
-    print("Retreiving Data!")
-    #Convert DataFrames to Excel with two sheets
-    excel_data = BytesIO()
-    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
-        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
-        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
-        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
-        
-    #Save the Excel data to a BytesIO buffer
-    excel_data.seek(0)
-    return excel_data
-
-st.sidebar.download_button(
-    label="Active Devices",
-    data=download_active_report(),
-    file_name=f"{today} POS Active Report.xlsx",
-    key="download_active_report"
-)
 
 #I was told by some people to put this here, it's true.
 #Although I do use this software for work because it makes my job easier, I made it for myself (it was previously just an excel sheet named: "RELATIONAL DATABASE") 🥹 
@@ -586,13 +528,12 @@ def apply_connected_changes(selected_device_serial):
     
 
 #This defines each of my tabs at the top of the screen
-overview, devices, components, locations, history, images = st.columns(6)
-overview, devices, components, locations, history, images = st.tabs(["Overview", "Devices", "Components", "Locations", "History", "Images"])
+overview, devices, components, locations, history, reports = st.columns(6)
+overview, devices, components, locations, history, reports = st.tabs(["Overview", "Devices", "Components", "Locations", "History", "Reports"])
 
 #The next six 'with' statements are for each of the tabs and their functions. 
 
 with overview:
-    #Two columns across this entire page
     col1, col2 = st.columns(2)
     col1.subheader('Overview')
     
@@ -615,29 +556,23 @@ with overview:
     wasted_components = df_components[df_components['LOCATION'] == 'E-WASTED']['LOCATION'].count()
     devices_without_photo = df_devices['IMAGE'].isnull().sum()
     components_without_photo = df_components['IMAGE'].isnull().sum()
-    stored_assets = df_devices[df_devices['LOCATION'] == 'WAREHOUSE']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'WAREHOUSE']['LOCATION'].count()) + (df_devices[df_devices['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count()) + (df_components[df_components['LOCATION'] == "JACK DANIEL'S OFFICE"]['LOCATION'].count())
+    storage_locations = df_locations[df_locations['IS_STORAGE'] == True]['LOCATION'].tolist()
+    devices_in_storage = df_devices[df_devices['LOCATION'].isin(storage_locations)]
+    components_in_storage = df_components[df_components['LOCATION'].isin(storage_locations)]
+    stored_assets = devices_in_storage.shape[0] + components_in_storage.shape[0]
     unknown_assets = df_devices[df_devices['LOCATION'] == 'UNKNOWN']['LOCATION'].count() + (df_components[df_components['LOCATION'] == 'UNKNOWN']['LOCATION'].count())    
         
     #Display the overview paragraph
     col1.write(f'''
-               {changes_sentence} to the database in the last 24 hours.
-               
-               Right now there are {total_devices-wasted_devices} active devices and {total_components-wasted_components} components.
-               {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_devices + wasted_components} assets have been sent to E-Waste.
-               
-               There are {devices_without_photo} devices without a photo and {components_without_photo} components without a photo.
-               
-               Got ideas for what should be displayed on this page? [Tell Andrew!](https://github.com/JAndrewGibson)
-               ''')
-    
-    
-    
-    #The table of device quantity by location
-    col2.subheader("Location Breakdown")
-    location_data = df_devices.groupby("LOCATION")["S/N"].nunique().reset_index()
-    POS_data = df_devices.groupby("POS")["S/N"].nunique()
-    col2.dataframe(location_data, hide_index=True, use_container_width=True)
-    col1.dataframe(POS_data)
+            {changes_sentence} to the database in the last 24 hours.
+            
+            Right now there are {total_devices-wasted_devices} active devices and {total_components-wasted_components} components.
+            {stored_assets} assets are currently in storage, {unknown_assets} are in an unknown location, and {wasted_devices + wasted_components} assets have been sent to E-Waste.
+            
+            There are {devices_without_photo} devices without a photo and {components_without_photo} components without a photo.
+            
+            Got ideas for what should be displayed on this page? [Tell Andrew!](https://github.com/JAndrewGibson)
+            ''')
 
 with devices:
     #Two columns for this page as well!
@@ -716,11 +651,12 @@ with devices:
 
             if col2.button("Save Device"):
                 try:
-                    if save_changes_to_connected == True:
-                        apply_connected_changes(selected_device_serial)
                     #Fetch the current values before the update
                     fetch_old_values_query = "SELECT POS, LOCATION, `FRIENDLY NAME`, NOTES, IMAGE FROM DEVICES WHERE `S/N` = :a;"
                     old_values = conn.query(fetch_old_values_query, params={"a": selected_device_serial})
+                    
+                    if save_changes_to_connected == True and location != old_values.iat[0, 1]:
+                        apply_connected_changes(selected_device_serial)
                     
                     if notes == "None":
                         notes = None
@@ -814,7 +750,7 @@ with components:
         default_connection_index = connection_options.tolist().index(current_connection) if current_connection in connection_options else None
         connection = col2.selectbox("Component Connection", connection_options, index=default_connection_index)
         break_connection_box = col2.checkbox("Break connection", value=False,)
-        notes = col2.text_input("Component Notes", filtered_components.at[selected_component_index, 'NOTES'])
+        component_notes = col2.text_input("Component Notes", filtered_components.at[selected_component_index, 'NOTES'])
         #Display existing image if available
         
         if 'IMAGE' in filtered_components.columns:
@@ -850,14 +786,14 @@ with components:
 
                 #Update the data in the SQL database
                 timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                if notes == "None":
-                    notes = None
+                if component_notes == "None":
+                    component_notes = None
                 #Update the data in the SQL database
                 update_query = text(f"UPDATE COMPONENTS SET POS = :a, LOCATION = :b, CONNECTED = :c, NOTES = :d, IMAGE = :e, `LAST EDIT` = :f WHERE `S/N` = :g;")
                  #Insert the old values into the HISTORY table
                 insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'DEVICE S/N', 'PREVIOUS LOCATION', 'PREVIOUS CONNECTION', 'PREVIOUS NOTES', 'PREVIOUS PHOTO', 'NEW LOCATION', 'NEW CONNECTION', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d, :e, :f, :g, :h, :i, :j, :k);")
                 with conn.session as session:
-                    session.execute(update_query, {"a": pos, "b": location, "c": selected_connection_serial, "d": notes, "e": component_image_filename, "f": timestamp, "g": selected_component_serial})
+                    session.execute(update_query, {"a": pos, "b": location, "c": selected_connection_serial, "d": component_notes, "e": component_image_filename, "f": timestamp, "g": selected_component_serial})
                     session.execute(insert_history_query, {"a": timestamp, "b": selected_component_serial, "c": old_values.iat[0, 1], "d": old_values.iat[0, 2], "e": old_values.iat[0, 3], "f": old_values.iat[0, 4], "g": location, "h": selected_connection_serial, "i": notes, "j": component_image_filename, "k": "COMPONENT UPDATE"})
                     session.commit()
 
@@ -878,6 +814,7 @@ with locations:
     for index, row in df_locations.iterrows():
         location_name = row["LOCATION"]
         image_filename = row["IMAGE"]
+        is_storage = row["IS_STORAGE"]
 
         with cols[index % len(cols)]:
             with st.container():
@@ -886,6 +823,11 @@ with locations:
 Devices: {df_devices[df_devices['LOCATION'] == location_name]['LOCATION'].count()}
 
 Components: {df_components[df_components['LOCATION'] == location_name]['LOCATION'].count()}''')
+                
+                if st.checkbox("Storage location", value = is_storage,key=f"storage_{location_name}"):
+                    is_now_storage = True
+                else:
+                    is_now_storage = False
                 
                 if image_filename:
                     images_folder = "images" 
@@ -897,39 +839,58 @@ Components: {df_components[df_components['LOCATION'] == location_name]['LOCATION
                     with st.expander(f"Edit {location_name} photo"):
                         location_image_upload = st.file_uploader(f"Edit {location_name} photo", type=["jpg", "jpeg", "png"])
                         if st.button(f"Save {location_name}", f"{location_name}"):
+                            location_image_filename = image_filename
                             if location_image_upload:
                                 location_image_filename = process_and_save_image(location_image_upload, location_name)
-                                #Update the data in the SQL database
-                                notes = f"{location_name} image updated!"
-                                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                                update_query = text(f"UPDATE LOCATIONS SET IMAGE = :a WHERE `LOCATION` = :b;")
-                                insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
-                                with conn.session as session:
-                                    session.execute(update_query, {"a": location_image_filename, "b": location_name})
-                                    session.execute(insert_history_query, {"a": timestamp, "b": notes, "c": location_image_filename, "d": "LOCATION UPDATE"})
-                                    session.commit()
-
+                                if is_now_storage == is_storage:
+                                        notes = f"{location_name} image updated!"   
+                                elif is_now_storage == True:
+                                    notes = f"{location_name} is now a storage location and it's image has been updated!"
+                                else:
+                                    notes = f"{location_name} is no longer a storage location and it's image has been updated!"
+                            elif is_now_storage != is_storage and is_now_storage == True:
+                                notes = f"{location_name} is now a storage location"
+                            elif is_now_storage != is_storage and is_now_storage == False:
+                                notes = f"{location_name} is no longer a storage location"
+                            #Update the data in the SQL database
+                            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            update_query = text(f"UPDATE LOCATIONS SET IMAGE = :a, IS_STORAGE = :b WHERE `LOCATION` = :c;")
+                            insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
+                            with conn.session as session:
+                                session.execute(update_query, {"a": location_image_filename, "b": is_now_storage, "c": location_name})
+                                session.execute(insert_history_query, {"a": timestamp, "b": notes, "c": location_image_filename, "d": "LOCATION UPDATE"})
+                                session.commit()
                                 #Refresh the data in the app
                                 refresh_data()
+                                
                         
                 else:
                     location_image_upload = st.file_uploader(f"There's no photo for {location_name}, why don't you add one?", type=["jpg", "jpeg", "png"])
                     if st.button(f"Save {location_name}", f"{location_name}"):
+                        location_image_filename = image_filename
                         if location_image_upload:
                             location_image_filename = process_and_save_image(location_image_upload, location_name)
-                            #Update the data in the SQL database
-                            notes = f"{location_name} image updated!"
-                            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                            update_query = text(f"UPDATE LOCATIONS SET IMAGE = :a WHERE `LOCATION` = :b;")
-                            insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
-                            with conn.session as session:
-                                session.execute(update_query, {"a": location_image_filename, "b": location_name})
-                                session.execute(insert_history_query, {"a": timestamp, "b": notes, "c": location_image_filename, "d": "LOCATION UPDATE"})
-                                session.commit()
-
-                            st.toast(f"{location_name} saved successfully!", icon="🎉")
+                            if is_now_storage == is_storage:
+                                    notes = f"{location_name} image added!"   
+                            elif is_now_storage == True:
+                                notes = f"{location_name} is now a storage location and it's image has been added!"
+                            else:
+                                notes = f"{location_name} is no longer a storage location and it's image has been added!"
+                        elif is_now_storage != is_storage and is_now_storage == True:
+                            notes = f"{location_name} is now a storage location"
+                        elif is_now_storage != is_storage and is_now_storage == False:
+                            notes = f"{location_name} is no longer a storage location"
+                        #Update the data in the SQL database
+                        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        update_query = text(f"UPDATE LOCATIONS SET IMAGE = :a, IS_STORAGE = :b WHERE `LOCATION` = :c;")
+                        insert_history_query = text("INSERT INTO HISTORY ('CHANGE TIME', 'NEW NOTES', 'NEW PHOTO', 'CHANGE LOG') VALUES (:a, :b, :c, :d);")
+                        with conn.session as session:
+                            session.execute(update_query, {"a": location_image_filename, "b": is_now_storage, "c": location_name})
+                            session.execute(insert_history_query, {"a": timestamp, "b": notes, "c": location_image_filename, "d": "LOCATION UPDATE"})
+                            session.commit()
                             #Refresh the data in the app
-                            refresh_data()     
+                            refresh_data()
+                                  
             st.divider()
                 
 with history:
@@ -955,30 +916,137 @@ with history:
     else:
         #Display all history data
         st.dataframe(df_history, use_container_width=True, hide_index=True, column_order=("CHANGE LOG","DEVICE S/N","PREVIOUS LOCATION","NEW LOCATION","PREVIOUS FRIENDLY NAME","NEW FRIENDLY NAME","PREVIOUS CONNECTION","NEW CONNECTION","PREVIOUS NOTES","NEW NOTES","CHANGE TIME"))
+
+
+def download_full_report():
+    #Read data from the DEVICES table into a DataFrame
+    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES;")
+    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY;")
+    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS;")
+    print("Retreiving Full Report Data!")
+    #Convert DataFrames to Excel with two sheets
+    excel_data = BytesIO()
+    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
+        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
+        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
+        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
+
+    #Save the Excel data to a BytesIO buffer
+    excel_data.seek(0)
+    return excel_data
+
+def download_ewaste_report():
+    #Read data from the DEVICES table into a DataFrame, filtering for E-WASTED
+    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES WHERE LOCATION = 'E-WASTED';")
+    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY WHERE `PREVIOUS LOCATION` = 'E-WASTED' OR `NEW LOCATION` = 'E-WASTED';")
+    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS WHERE LOCATION = 'E-WASTED';")
+
+    print("Retreiving E-Waste Report Data!")
+    #Convert DataFrames to Excel with two sheets
+    excel_data = BytesIO()
+    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
+        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
+        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
+        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
         
-with images:
-    st.subheader("Images")
-    #Folder path 
-    image_folder = "images"
+    #Save the Excel data to a BytesIO buffer
+    excel_data.seek(0)
+    return excel_data
 
-    #Get a list of all image files
-    image_files = [f for f in os.listdir(image_folder) if f.endswith(('.jpg', '.jpeg', '.png'))]
+def download_active_report():
+    df_devices = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, `FRIENDLY NAME`, NOTES, `LAST EDIT` FROM DEVICES WHERE LOCATION != 'E-WASTED';")
+    df_history = conn.query("SELECT `CHANGE TIME`, `DEVICE S/N`, `PREVIOUS LOCATION`, `PREVIOUS FRIENDLY NAME`, `PREVIOUS CONNECTION`, `PREVIOUS NOTES`, `NEW LOCATION`, `NEW FRIENDLY NAME`, `NEW CONNECTION`, `NEW NOTES` FROM HISTORY WHERE `PREVIOUS LOCATION` != 'E-WASTED' AND `NEW LOCATION` != 'E-WASTED';")
+    df_components = conn.query("SELECT POS, MODEL, TYPE, `S/N`, LOCATION, CONNECTED, NOTES, `LAST EDIT` FROM COMPONENTS WHERE LOCATION != 'E-WASTED';")
 
-    #Set the desired number of columns for your grid
-    columns_per_row = 10
+    print("Retreiving Data!")
+    #Convert DataFrames to Excel with two sheets
+    excel_data = BytesIO()
+    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
+        df_devices.to_excel(writer, sheet_name='DEVICES', index=False)
+        df_components.to_excel(writer, sheet_name='COMPONENTS', index=False)
+        df_history.to_excel(writer, sheet_name="HISTORY", index=False)
+        
+    #Save the Excel data to a BytesIO buffer
+    excel_data.seek(0)
+    return excel_data
 
-    #Display images in a grid
-    for i in range(0, len(image_files), columns_per_row):
-        cols = st.columns(columns_per_row)
-        for j, image_file in enumerate(image_files[i:i+columns_per_row]):
-            image_path = os.path.join(image_folder, image_file)
-            image = Image.open(image_path)
+def create_photo_zip_and_download_button(directory_path):
+    photo_zip_filename = f"{today} POS IMAGES.zip"  # Name of the ZIP file
+    with ZipFile(photo_zip_filename, "w") as zipf:
+        for root, dirs, files in os.walk(directory_path):
+            for file in files:
+                zipf.write(os.path.join(root, file), arcname=file)  # Maintain original file names
 
-            #Resize the image (optional)
-            width, height = image.size  #Get original dimensions
-            resized_image = image.resize(
-                (int(width * 0.5), int(height * 0.5))  #Scale down by 50%
-            )
+    with open(photo_zip_filename, "rb") as f:
+        photos_zip_bytes_data = f.read()
 
-            filename = image_file.split('.')[0]  #Split by '.' and take the first part
-            cols[j].image(resized_image, caption=filename)
+    return photos_zip_bytes_data
+    
+with reports:
+    st.subheader("Reports")
+        
+    xlsx, csv, pdf, zip = st.columns(4)
+    xlsx, csv, pdf, zip = st.tabs([".XLSX",".CSV", ".PDF", ".ZIP"])
+
+    with xlsx:
+        
+        #Full Database Download Button
+        st.download_button(
+            label="Full Database Download",
+            data=download_full_report(),
+            file_name=f"{today} POS Full Hardware Inventory.xlsx",
+            key="download_full_report"
+        )
+
+        #E-Waste Devices Download button
+        st.download_button(
+            label="E-Wasted Devices",
+            data=download_ewaste_report(),
+            file_name=f"{today} POS E-Waste Report.xlsx",
+            key="download_ewaste_report"
+        )
+
+        #Active Devices Download Button
+        st.download_button(
+            label="Active Devices",
+            data=download_active_report(),
+            file_name=f"{today} POS Active Report.xlsx",
+            key="download_active_report"
+        )
+    
+    
+    with zip:
+        st.download_button(
+            label="All POS photos",
+            data=create_photo_zip_and_download_button(images_path),
+            file_name=f"{today} POS IMAGES.zip",
+            key="download_photo_zip")
+            
+        if st.button("Create a .zip of EVERYTHING"):
+            st.markdown('''Are you sure? This is EVERYTHING.
+- The .db in it's entirety.
+- All of the reports available
+- Every photo ever uploaded here
+- The complete history of every device
+- The source code for this program
+- The zip of the Github commits (meaning every other version of this software)
+
+I just don't know why anyone would need that, but if you're sure - proceed.''',help='''
+Seriously - there is no reason for you to download this right now aside from your curiosity.
+You're just going to poke through it for a few minutes and then forget about it
+And then what, you're just going to have it on your hard drive until you either get rid of the computer or re-install the OS
+
+I'm just saying, what are you really accomplishing here?
+''')
+            with st.expander("Click here to proceed..."):
+                st.markdown('''
+
+Come on, please. Be serious. You do not need this file.
+                            
+Why would you? I don't even need this file and yet I'm still programming in this button, which is no small feat!
+
+Whatever. Have it your way...
+''')
+                if st.button("Click here to generate the report that you DO NOT need."):
+                    create_photo_zip_and_download_button(images_path)
+                
