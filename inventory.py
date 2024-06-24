@@ -146,7 +146,7 @@ st.markdown("""
     top: -0.5em;
 }
 </style>
-<h1>HC Hardware <span class="title-superscript">v2.9.0</span></h1> 
+<h1>HC Hardware <span class="title-superscript">v3.0.0</span></h1> 
 """, unsafe_allow_html=True)
 
 #Setting up my database connections and image folder
@@ -275,7 +275,7 @@ with st.sidebar.expander("**Add Component**"):
 with st.sidebar.expander("**Add Location**"):
     with st.form("Add New Location"):
         location_name = st.text_input("Location Name", "")
-        storage_check = st.checkbox("Storage location?", value= False)
+        storage_check = st.checkbox("This is a storage location.", value= False)
 
         #File upload for new location image
         location_image_upload = st.file_uploader("Upload a photo for the Image", type=["jpg", "jpeg", "png"])
@@ -688,7 +688,7 @@ with devices:
         col1.write("Oops, no devices... Check your search terms or refresh data!")
             
 with components:
-    #Everything has two columns, lol
+    #Everything has two columns
     col1, col2 = st.columns(2)
     col1.subheader('Components')
    
@@ -989,38 +989,43 @@ with reports:
     xlsx, csv, pdf, zip = st.tabs([".XLSX",".CSV", ".PDF", ".ZIP"])
 
     with xlsx:
+        st.text("Select a button below to generate that report, a download button will appear once generated.")
         
         #Full Database Download Button
-        st.download_button(
-            label="Full Database Download",
-            data=download_full_report(),
-            file_name=f"{today} POS Full Hardware Inventory.xlsx",
-            key="download_full_report"
-        )
+        if st.button(label="Full Database"):
+            st.download_button(
+                label="Full Database Download",
+                data=download_full_report(),
+                file_name=f"{today} POS Full Hardware Inventory.xlsx",
+                key="download_full_report"
+            )
 
         #E-Waste Devices Download button
-        st.download_button(
-            label="E-Wasted Devices",
-            data=download_ewaste_report(),
-            file_name=f"{today} POS E-Waste Report.xlsx",
-            key="download_ewaste_report"
-        )
+        if st.button(label="E-Waste"):
+            st.download_button(
+                label="E-Waste Download",
+                data=download_ewaste_report(),
+                file_name=f"{today} POS E-Waste Report.xlsx",
+                key="download_ewaste_report"
+            )
 
         #Active Devices Download Button
-        st.download_button(
-            label="Active Devices",
-            data=download_active_report(),
-            file_name=f"{today} POS Active Report.xlsx",
-            key="download_active_report"
-        )
+        if st.button(label="Active Assets"):
+            st.download_button(
+                label="Active Assets Download",
+                data=download_active_report(),
+                file_name=f"{today} POS Active Report.xlsx",
+                key="download_active_report"
+            )
     
     
     with zip:
-        st.download_button(
-            label="All POS photos",
-            data=create_photo_zip_and_download_button(images_path),
-            file_name=f"{today} POS IMAGES.zip",
-            key="download_photo_zip")
+        if st.button(label="All POS Photos"):
+            st.download_button(
+                label="All POS photos download",
+                data=create_photo_zip_and_download_button(images_path),
+                file_name=f"{today} POS IMAGES.zip",
+                key="download_photo_zip")
             
         if st.button("Create a .zip of EVERYTHING"):
             st.markdown('''Are you sure? This is EVERYTHING.
